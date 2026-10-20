@@ -1,0 +1,1201 @@
+"use strict";
+// =========================================================
+//  볼트 커넥션 — 화면 동작
+//  전압 미리보기는 화면에서 하지만, 정답·별·코인·시간은 서버가 다시 확인한다.
+// =========================================================
+const $ = (id) => document.getElementById(id);
+const ORDER = ["a", "c", "l", "n"];
+let U = { a: 3, c: 6, l: 12, n: 18 };        // 0.5V 단위 (서버에서 다시 받음)
+let BAT = {};
+let META = null;                             // /api/stages
+let ME = { id: null };
+let G = null;                                // 지금 하는 판
+let lastStagesView = null;
+
+// ----- 설정 · 손님 기록 (브라우저에 저장) -----
+const SET_KEY = "vc.settings";
+const GUEST_KEY = "vc.guest";
+const settings = Object.assign({ sound: true, vibrate: true, theme: "dark", calm: false },
+  JSON.parse(localStorage.getItem(SET_KEY) || "{}"));
+const saveSettings = () => localStorage.setItem(SET_KEY, JSON.stringify(settings));
+let guest = JSON.parse(localStorage.getItem(GUEST_KEY) || '{"stars":{},"tokens":{}}');
+const saveGuest = () => localStorage.setItem(GUEST_KEY, JSON.stringify(guest));
+
+// ----- 도우미 -----
+const volt = (u) => { const v = u / 2; return (Number.isInteger(v) ? v : v.toFixed(1)) + "V"; };
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const icon = (name, cls) => {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  if (cls) s.setAttribute("class", cls);
+  s.setAttribute("aria-hidden", "true");
+  const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  u.setAttribute("href", "#" + name);
+  s.appendChild(u);
+  return s;
+};
+
+async function api(path, body, method) {
+  try {
+    const res = await fetch(path, {
+      method: method || (body !== undefined ? "POST" : "GET"),
+      headers: { "Content-Type": "application/json" },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = null; }
+    return { ok: res.ok, status: res.status, data: data || {} };
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: "인터넷 연결을 확인해 주세요." } };
+  }
+}
+
+let toastTimer = null;
+function toast(msg, ms) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), ms || 2600);
+}
+function floatText(text, x, y, cls) {
+  const f = el("div", "float-txt " + (cls || ""), text);
+  f.style.left = x + "px";
+  f.style.top = y + "px";
+  $("fx").appendChild(f);
+  setTimeout(() => f.remove(), 1200);
+}
+function floatAt(node, text, cls) {
+  const r = node.getBoundingClientRect();
+  floatText(text, r.left + r.width / 2, r.top, cls);
+}
+function confetti() {
+  if (settings.calm) return;
+  const colors = ["var(--volt)", "var(--ok)", "var(--info)", "var(--n)", "var(--l)"];
+  for (let i = 0; i < 36; i++) {
+    const c = el("div", "confetti");
+    c.style.left = 50 + (Math.random() - 0.5) * 40 + "vw";
+    c.style.top = "20vh";
+    c.style.background = colors[i % colors.length];
+    c.style.setProperty("--dx", (Math.random() - 0.5) * 60 + "vw");
+    c.style.setProperty("--rot", Math.random() * 720 + "deg");
+    c.style.animationDelay = Math.random() * 0.2 + "s";
+    $("fx").appendChild(c);
+    setTimeout(() => c.remove(), 1800);
+  }
+}
+
+// ----- 소리 · 진동 (앱이 직접 만드는 소리) -----
+let actx = null;
+function beep(freq, dur, type, vol, delay) {
+  if (!settings.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const t = actx.currentTime + (delay || 0);
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.type = type || "sine";
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.12, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  } catch (e) { /* 소리를 못 내면 넘어감 */ }
+}
+const sfx = {
+  pick: () => beep(660, 0.05, "triangle", 0.08),
+  place: () => { beep(420, 0.05, "triangle", 0.12); beep(640, 0.06, "triangle", 0.08, 0.04); },
+  flip: () => beep(330, 0.08, "square", 0.05),
+  remove: () => beep(240, 0.07, "triangle", 0.1),
+  bad: () => beep(150, 0.18, "sawtooth", 0.06),
+  win: () => [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.22, "sine", 0.14, i * 0.09)),
+  coin: () => { beep(988, 0.06, "square", 0.05); beep(1319, 0.12, "square", 0.05, 0.06); },
+  tick: () => beep(880, 0.03, "square", 0.035),
+  item: () => [440, 554, 659].forEach((f, i) => beep(f, 0.1, "triangle", 0.09, i * 0.05)),
+  over: () => [392, 330, 262, 196].forEach((f, i) => beep(f, 0.22, "triangle", 0.1, i * 0.12)),
+};
+const vibe = (p) => { if (settings.vibrate && navigator.vibrate) navigator.vibrate(p); };
+
+// ===== 화면 이동 =====
+let currentView = "home";
+function show(view) {
+  currentView = view;
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
+  $("nav-back").classList.toggle("hidden", view === "home");
+  window.scrollTo(0, 0);
+  if (view !== "game") stopRushClock();
+}
+function goBack() {
+  if (currentView === "game") return leaveGame();
+  if (currentView === "home") return;
+  goHome();
+}
+async function goHome() {
+  G = null;
+  show("home");
+  renderHome();        // 가진 정보로 먼저 그리고
+  await loadMeta();    // 서버의 최신 기록으로 다시 그린다
+  if (currentView === "home") renderHome();
+}
+
+// 스테이지를 깬 순간 화면 목록에도 바로 반영 (서버 기록과 같게)
+function markCleared(no, stars) {
+  if (!META) return;
+  const s = META.stages.find((x) => x.no === no);
+  if (s) s.stars = Math.max(s.stars || 0, stars);
+  const nx = META.stages.find((x) => x.no === no + 1);
+  if (nx && ME.id) nx.unlocked = true;
+}
+
+// ===== 로그인 상태 =====
+async function loadMe() {
+  const r = await api("/me");
+  ME = r.data && r.data.id ? r.data : { id: null };
+  const logged = !!ME.id;
+  $("btn-login").classList.toggle("hidden", logged);
+  $("btn-user").classList.toggle("hidden", !logged);
+  $("btn-user").textContent = logged ? ME.nickname : "";
+  $("btn-logout").classList.toggle("hidden", !logged);
+  renderWallet();
+}
+function renderWallet(w) {
+  if (w) ME.wallet = w;
+  const logged = !!ME.id && ME.wallet;
+  $("wallet").classList.toggle("hidden", !logged);
+  if (!logged) return;
+  for (const k of ["coins", "meter", "breaker", "charger"]) {
+    const b = $("w-" + k);
+    if (b.textContent !== String(ME.wallet[k])) {
+      b.textContent = ME.wallet[k];
+      b.parentElement.classList.remove("bump");
+      void b.parentElement.offsetWidth;
+      b.parentElement.classList.add("bump");
+    }
+  }
+  if (G) renderTools();
+}
+
+async function loadMeta() {
+  const r = await api("/api/stages");
+  if (!r.ok) return;
+  META = r.data;
+  U = META.units;
+  BAT = META.batteries;
+}
+
+// 손님이면 브라우저에 저장한 별을 합쳐서 본다
+function stageInfo() {
+  return META.stages.map((s) => {
+    if (ME.id) return s;
+    const stars = guest.stars[s.no] || 0;
+    const unlocked = s.no <= META.guest_max && (s.no === 1 || !!guest.stars[s.no - 1]);
+    return Object.assign({}, s, { stars, unlocked, guestLocked: s.no > META.guest_max });
+  });
+}
+
+// ===== 처음 화면 =====
+async function renderHome() {
+  if (!META) return;
+  const list = stageInfo();
+  const stars = list.reduce((a, s) => a + s.stars, 0);
+  const cleared = list.filter((s) => s.stars).length;
+  const next = list.find((s) => s.unlocked && !s.stars) || null;
+  $("mc-stages").innerHTML = "";
+  $("mc-stages").append("별 ", el("b", null, `${stars}/${list.length * 3}`), ` · ${cleared}단계 깸`);
+
+  const cont = $("btn-continue");
+  if (next) {
+    $("cont-kicker").textContent = cleared ? "이어서 하기" : "처음 시작하기";
+    $("cont-title").textContent = `스테이지 ${next.no} · ${next.title}`;
+    cont.onclick = () => startStage(next.no);
+  } else if (!ME.id && cleared >= META.guest_max) {
+    $("cont-kicker").textContent = `${META.guest_max}단계를 다 깼어요!`;
+    $("cont-title").textContent = "로그인하고 이어서 하기";
+    cont.onclick = () => openAuth("signup", "가입하면 지금까지 깬 기록을 그대로 옮겨 드려요.");
+  } else {
+    $("cont-kicker").textContent = "모든 스테이지를 깼어요";
+    $("cont-title").textContent = "타임어택에 도전!";
+    cont.onclick = startRush;
+  }
+
+  if (ME.id) {
+    const r = await api("/api/home");
+    if (r.ok) {
+      $("mc-rush").innerHTML = "";
+      $("mc-rush").append("내 최고 ", el("b", null, r.data.rush_best + "점"));
+      $("mc-daily").textContent = r.data.daily ? `오늘 완료 · 건전지 ${r.data.daily.used}개` : "오늘 아직 안 풀었어요";
+      renderWallet(r.data.wallet);
+    }
+  } else {
+    $("mc-rush").textContent = "로그인하면 할 수 있어요";
+    $("mc-daily").textContent = "로그인하면 할 수 있어요";
+  }
+}
+
+// ===== 스테이지 목록 =====
+function renderStages() {
+  const list = stageInfo();
+  const stars = list.reduce((a, s) => a + s.stars, 0);
+  $("stage-summary").textContent = ME.id
+    ? `별 ${stars} / ${list.length * 3}개 모았어요.`
+    : `로그인 안 해도 ${META.guest_max}단계까지 할 수 있어요. 별 ${stars}개`;
+  const box = $("chapter-list");
+  box.innerHTML = "";
+  const next = list.find((s) => s.unlocked && !s.stars);
+  META.chapters.forEach((ch) => {
+    const stages = list.filter((s) => s.chapter === ch.no);
+    const got = stages.reduce((a, s) => a + s.stars, 0);
+    const sec = el("div", "chapter");
+    const head = el("div", "chapter-head");
+    head.append(el("h3", null, `${ch.no}장 · ${ch.name}`), el("span", null, `★ ${got}/${stages.length * 3}`));
+    sec.append(head, el("p", "chapter-desc", ch.desc));
+    const grid = el("div", "stage-grid");
+    stages.forEach((s) => {
+      const b = el("button", "stage-btn");
+      const locked = !s.unlocked;
+      if (locked) b.classList.add("locked");
+      if (next && s.no === next.no) b.classList.add("next");
+      b.append(el("span", "sb-no", s.no));
+      if (locked) b.append(icon("i-lock", "sb-lock"));
+      b.append(el("span", "sb-v", `${volt(s.target)}${s.need > 1 ? ` ×${s.need}줄` : ""}`));
+      const st = el("span", "sb-stars");
+      for (let i = 1; i <= 3; i++) st.append(icon("i-star", i <= s.stars ? "on" : ""));
+      b.append(st);
+      b.setAttribute("aria-label", `스테이지 ${s.no} ${s.title}, 목표 ${volt(s.target)}, 별 ${s.stars}개${locked ? ", 잠김" : ""}`);
+      b.onclick = () => {
+        if (s.guestLocked) return openAuth("signup", `${META.guest_max + 1}단계부터는 로그인해야 해요. 가입하면 지금까지 기록을 옮겨 드려요.`);
+        if (locked) { toast("앞 스테이지를 먼저 깨 주세요"); sfx.bad(); return; }
+        startStage(s.no);
+      };
+      grid.append(b);
+    });
+    sec.append(grid);
+    box.append(sec);
+  });
+}
+
+// ===== 판 시작 =====
+async function startStage(no) {
+  const r = await api("/api/play/stage", { no });
+  if (!r.ok) {
+    if (r.data.login) return openAuth("signup", r.data.error);
+    return toast(r.data.error || "시작하지 못했어요");
+  }
+  setupGame("stage", r.data);
+}
+async function startDaily() {
+  if (!ME.id) return openAuth("login", "오늘의 퍼즐은 모두가 같은 문제를 풀고 순위를 겨뤄요. 로그인해 주세요.");
+  const r = await api("/api/play/daily", {});
+  if (!r.ok) return toast(r.data.error || "시작하지 못했어요");
+  setupGame("daily", r.data);
+  if (r.data.best) toast(`오늘 이미 풀었어요 (건전지 ${r.data.best.used}개 · ${r.data.best.secs}초). 기록을 줄여 볼까요?`, 3500);
+}
+async function startRush() {
+  if (!ME.id) return openAuth("login", "타임어택 점수는 랭킹에 올라가요. 로그인해 주세요.");
+  const r = await api("/api/rush/start", {});
+  if (!r.ok) return toast(r.data.error || "시작하지 못했어요");
+  closeModal("over-modal");
+  setupGame("rush", r.data);
+  toast("전력이 닳기 전에 회로를 완성해요!", 2000);
+}
+
+function setupGame(kind, data) {
+  G = {
+    kind, token: data.token, pz: data.puzzle, board: null, unblocked: [], sel: null,
+    breaker: false, hint: null, busy: false, done: false, t0: Date.now(), ending: false,
+  };
+  resetBoard();
+  if (kind === "rush") syncRush(data);
+  show("game");
+  renderGame();
+  if (kind === "rush") startRushClock();
+  else startClock();
+}
+
+function resetBoard() {
+  G.board = G.pz.rows.map((cap) => Array(cap).fill(null));
+  G.unblocked = [];
+  G.sel = null;
+  G.hint = null;
+  G.breaker = false;
+}
+
+// ===== 규칙 (화면 미리보기용, 서버와 같은 계산) =====
+function isBlocked(r, s) {
+  return G.pz.blocked.some((b) => b[0] === r && b[1] === s) && !G.unblocked.some((b) => b[0] === r && b[1] === s);
+}
+function usedCount(t) {
+  let n = 0;
+  G.board.forEach((row) => row.forEach((c) => { if (c && c.t === t) n++; }));
+  return n;
+}
+const left = (t) => (G.pz.tray[t] || 0) - usedCount(t);
+
+function evaluate() {
+  const pz = G.pz;
+  const rows = G.board.map((cells) => {
+    const items = cells.filter(Boolean);
+    return { v: items.reduce((a, c) => a + U[c.t] * c.s, 0), n: items.length };
+  });
+  const filled = rows.filter((r) => r.n);
+  const used = rows.reduce((a, r) => a + r.n, 0);
+  let status, out = null;
+  if (!filled.length) status = "empty";
+  else if (new Set(filled.map((r) => r.v)).size > 1) status = "mismatch";
+  else {
+    out = filled[0].v;
+    if (out <= 0) status = "reverse";
+    else if (out > pz.target) status = "over";
+    else if (out < pz.target) status = "under";
+    else if (filled.length < pz.need) status = "need";
+    else status = "win";
+  }
+  return { rows, filled: filled.length, used, out, status };
+}
+
+// ===== 게임판 그리기 =====
+function renderGame() {
+  const pz = G.pz;
+  const kicker = { stage: `${pz.chapter}장 · 스테이지 ${pz.no}`, daily: "오늘의 퍼즐", rush: "타임어택" }[G.kind];
+  $("g-kicker").textContent = kicker;
+  $("g-title").textContent = pz.title;
+  $("g-target").textContent = volt(pz.target);
+  $("rush-hud").classList.toggle("hidden", G.kind !== "rush");
+  $("g-clock").classList.toggle("hidden", G.kind === "rush");
+  $("g-tip").classList.toggle("hidden", !pz.tip);
+  $("g-tip").textContent = pz.tip || "";
+  $("g-goal").innerHTML = "";
+  $("g-goal").append(icon("i-star"), icon("i-star"), icon("i-star"),
+    ` 건전지 ${pz.min}개로 풀면 별 3개 · ${pz.min + 2}개까지 별 2개`);
+  renderCircuit();
+  renderTray();
+  renderTools();
+  renderStatus();
+}
+
+function renderCircuit() {
+  const box = $("circuit");
+  box.innerHTML = "";
+  const many = G.pz.rows.length > 1;
+  G.pz.rows.forEach((cap, r) => {
+    const row = el("div", "crow");
+    row.dataset.r = r;
+    row.append(el("span", "crow-label", many ? `${r + 1}줄` : "직렬"));
+    const slots = el("div", "slots");
+    for (let s = 0; s < cap; s++) slots.append(slotEl(r, s));
+    row.append(slots, el("span", "crow-v", "—"));
+    box.append(row);
+  });
+  $("board").classList.toggle("picking", !!G.sel);
+  $("board").classList.toggle("breaking", G.breaker);
+}
+
+function battEl(t, s) {
+  const b = el("span", `batt t-${t}${s < 0 ? " neg" : ""}`);
+  const body = el("span", "b-body");
+  body.append(el("b", null, (s < 0 ? "−" : "") + volt(U[t])), el("small", null, BAT[t] ? BAT[t].name : t));
+  b.append(body, el("span", "b-cap"), el("span", "b-sign", s < 0 ? "−" : "+"));
+  return b;
+}
+
+function slotEl(r, s) {
+  const b = el("button", "slot");
+  b.type = "button";
+  b.dataset.r = r;
+  b.dataset.s = s;
+  const c = G.board[r][s];
+  const hinted = G.hint && G.hint.row === r && G.hint.slot === s;
+  if (hinted) b.classList.add("hint");
+  if (isBlocked(r, s)) {
+    b.classList.add("blocked");
+    b.append(icon("i-bolt"));
+    b.setAttribute("aria-label", `${r + 1}줄 ${s + 1}번 칸, 누전됨`);
+  } else if (c) {
+    b.classList.add("filled");
+    if (G.flipped === `${r}-${s}`) b.classList.add("flipped");
+    b.append(battEl(c.t, c.s));
+    const x = el("span", "x");
+    x.append(icon("i-x"));
+    x.setAttribute("role", "button");
+    x.setAttribute("aria-label", "빼기");
+    x.onclick = (e) => { e.stopPropagation(); removeAt(r, s); };
+    b.append(x);
+    b.setAttribute("aria-label", `${r + 1}줄 ${s + 1}번 칸, ${BAT[c.t].name} ${c.s < 0 ? "뒤집힘" : ""} ${volt(U[c.t] * c.s)}. 누르면 뒤집기`);
+  } else {
+    b.classList.add("empty");
+    if (G.pz.blocked.some((x) => x[0] === r && x[1] === s)) b.classList.add("fixed");
+    b.setAttribute("aria-label", `${r + 1}줄 ${s + 1}번 빈 칸`);
+  }
+  b.onclick = () => onSlot(r, s);
+  return b;
+}
+
+function renderTray() {
+  const box = $("tray");
+  box.innerHTML = "";
+  let key = 0;
+  ORDER.forEach((t) => {
+    const total = G.pz.tray[t] || 0;
+    if (!total) return;
+    key++;
+    const n = left(t);
+    const b = el("button", "tray-item" + (G.sel === t ? " sel" : "") + (n <= 0 ? " empty" : ""));
+    b.type = "button";
+    b.dataset.t = t;
+    b.append(battEl(t, 1), el("span", "cnt", n), el("span", "key", `${key}번 키`));
+    b.setAttribute("aria-pressed", G.sel === t ? "true" : "false");
+    b.setAttribute("aria-label", `${BAT[t].name} ${volt(U[t])}, ${n}개 남음`);
+    b.onclick = () => { if (dragJustEnded) return; selectType(t); };
+    bindDrag(b, t);
+    box.append(b);
+  });
+  setCharge();
+}
+
+function renderTools() {
+  if (!G) return;
+  const w = ME.wallet || {};
+  const logged = !!ME.id;
+  $("b-meter").textContent = logged ? w.meter : "";
+  $("b-breaker").textContent = logged ? w.breaker : "";
+  $("b-charger").textContent = logged ? w.charger : "";
+  const hasBlocked = G.pz.blocked.some((b) => isBlocked(b[0], b[1]));
+  $("t-breaker").classList.toggle("hidden", !hasBlocked && !G.breaker);
+  $("t-breaker").classList.toggle("on", G.breaker);
+  $("t-charger").classList.toggle("hidden", G.kind !== "rush");
+  $("t-skip").classList.toggle("hidden", G.kind !== "rush");
+}
+
+const MSG = {
+  empty: () => "건전지를 골라 빈 칸에 놓아 보세요",
+  under: (e) => `${volt(G.pz.target - e.out)} 모자라요`,
+  over: (e) => `${volt(e.out - G.pz.target)} 넘쳐요! 전구가 견디지 못해요`,
+  reverse: () => "전류가 거꾸로 흘러요. 건전지 방향을 바꿔 봐요",
+  mismatch: () => "줄마다 전압이 달라요! 병렬은 전압이 같아야 해요",
+  need: (e) => `전압은 맞아요! ${volt(G.pz.target)}짜리 줄이 ${G.pz.need - e.filled}개 더 필요해요`,
+  win: () => "불이 켜졌어요!",
+};
+
+function renderStatus() {
+  const e = evaluate();
+  const pz = G.pz;
+  // 줄마다 전압
+  document.querySelectorAll("#circuit .crow").forEach((row, r) => {
+    const info = e.rows[r];
+    const v = row.querySelector(".crow-v");
+    v.textContent = info.n ? volt(info.v) : "—";
+    row.classList.toggle("hit", info.n > 0 && info.v === pz.target);
+    row.classList.toggle("bad", info.n > 0 && (e.status === "mismatch" || info.v > pz.target || info.v <= 0));
+    row.classList.toggle("live", e.status === "win" && info.n > 0);
+    row.classList.toggle("off-row", !info.n);
+  });
+  $("circuit").classList.toggle("live", e.status === "win");
+  // 필요한 줄 표시
+  const need = $("g-need");
+  need.innerHTML = "";
+  if (pz.need > 1 || pz.rows.length > 1) {
+    const hits = e.rows.filter((r) => r.n && r.v === pz.target).length;
+    need.append(document.createTextNode(`필요한 줄 ${pz.need}개 `));
+    for (let i = 0; i < pz.need; i++) {
+      const dot = el("i");
+      if (i < Math.min(hits, pz.need) && e.status !== "mismatch") dot.classList.add("on");
+      need.append(dot);
+    }
+  } else {
+    need.textContent = "건전지를 한 줄로 이어요";
+  }
+  // 전구 밝기
+  const bulb = $("bulb");
+  let lit = 0;
+  if (e.status === "win") lit = 1;
+  else if (e.status === "need") lit = 0.45 + 0.4 * (e.filled / pz.need);
+  else if (e.status === "under") lit = Math.max(0.08, (e.out / pz.target) * 0.55);
+  else if (e.status === "over") lit = 0.9;
+  bulb.style.setProperty("--lit", lit.toFixed(2));
+  bulb.classList.toggle("win", e.status === "win");
+  bulb.classList.toggle("over", e.status === "over");
+  bulb.classList.toggle("spark", e.status === "mismatch" || e.status === "reverse");
+  // 계기판
+  const m = $("meter");
+  $("meter-out").textContent = e.out == null ? (e.status === "mismatch" ? "⚠" : "0V") : volt(e.out);
+  $("meter-msg").textContent = MSG[e.status](e);
+  m.classList.toggle("win", e.status === "win");
+  m.classList.toggle("bad", ["over", "reverse", "mismatch"].includes(e.status));
+  return e;
+}
+
+// ===== 놓기 · 뒤집기 · 빼기 =====
+function selectType(t) {
+  if (!G || G.done || G.busy) return;
+  if (left(t) <= 0) { toast(`${BAT[t].name} 건전지를 다 썼어요`); sfx.bad(); return; }
+  G.breaker = false;
+  G.sel = G.sel === t ? null : t;
+  sfx.pick();
+  renderTray();
+  renderTools();
+  $("board").classList.toggle("picking", !!G.sel);
+  $("board").classList.remove("breaking");
+}
+
+function shakeSlot(r, s) {
+  const b = document.querySelector(`.slot[data-r="${r}"][data-s="${s}"]`);
+  if (!b) return;
+  b.classList.remove("shake");
+  void b.offsetWidth;
+  b.classList.add("shake");
+}
+
+function onSlot(r, s) {
+  if (!G || G.done || G.busy) return;
+  if (G.breaker) {
+    if (isBlocked(r, s)) return useBreaker(r, s);
+    toast("번개 표시가 있는 칸을 눌러 주세요");
+    return;
+  }
+  if (isBlocked(r, s)) {
+    shakeSlot(r, s);
+    sfx.bad();
+    toast(ME.id && ME.wallet && ME.wallet.breaker ? "누전된 칸이에요. 차단기로 고칠 수 있어요" : "누전된 칸이라 쓸 수 없어요");
+    return;
+  }
+  const c = G.board[r][s];
+  if (!c) {
+    if (!G.sel) {
+      const avail = ORDER.filter((t) => left(t) > 0);
+      if (avail.length === 1) G.sel = avail[0];      // 한 종류뿐이면 알아서 고른다
+      else { toast("아래에서 건전지를 먼저 골라요"); pulseTray(); return; }
+    }
+    return placeAt(r, s, G.sel);
+  }
+  if (G.sel && G.sel !== c.t && left(G.sel) > 0) return placeAt(r, s, G.sel); // 다른 걸로 바꾸기
+  // 뒤집기
+  c.s = -c.s;
+  G.flipped = `${r}-${s}`;
+  sfx.flip();
+  afterChange();
+}
+
+function placeAt(r, s, t) {
+  if (left(t) <= 0) return;
+  // 전압계가 알려 준 칸이면 알려 준 방향으로 놓는다
+  let sign = 1;
+  if (G.hint && G.hint.action === "place" && G.hint.row === r && G.hint.slot === s && G.hint.t === t) sign = G.hint.s;
+  G.board[r][s] = { t, s: sign };
+  G.flipped = null;
+  if (left(t) <= 0) G.sel = null;
+  sfx.place();
+  vibe(8);
+  afterChange();
+}
+function removeAt(r, s) {
+  if (!G || G.done || G.busy || !G.board[r][s]) return;
+  G.board[r][s] = null;
+  sfx.remove();
+  afterChange();
+}
+function pulseTray() {
+  const t = $("tray");
+  t.classList.remove("shake");
+  void t.offsetWidth;
+  t.querySelectorAll(".tray-item:not(.empty)").forEach((x) => x.animate && x.animate(
+    [{ transform: "translateY(0)" }, { transform: "translateY(-6px)" }, { transform: "translateY(0)" }],
+    { duration: 300 }));
+}
+
+function afterChange() {
+  // 전압계 힌트가 해결됐으면 지운다
+  if (G.hint) {
+    const h = G.hint;
+    const c = G.board[h.row] && G.board[h.row][h.slot];
+    if ((h.action === "place" && c) || (h.action === "remove" && !c) || h.action === "flip") G.hint = null;
+  }
+  renderCircuit();
+  renderTray();
+  renderTools();
+  const e = renderStatus();
+  if (e.status === "win") submit();
+  else if (e.status === "over" || e.status === "mismatch") vibe([20, 40, 20]);
+}
+
+// ----- 끌어다 놓기 -----
+let dragJustEnded = false;
+function bindDrag(node, t) {
+  node.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || !G || G.done || G.busy || left(t) <= 0) return;
+    const sx = e.clientX, sy = e.clientY;
+    let ghost = null, over = null;
+    const move = (ev) => {
+      if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) {
+        ghost = el("div", "ghost-batt");
+        ghost.append(battEl(t, 1));
+        document.body.append(ghost);
+        G.sel = t;
+        renderTray();
+      }
+      if (!ghost) return;
+      ghost.style.transform = `translate(${ev.clientX - 33}px, ${ev.clientY - 26}px)`;
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const slot = hit && hit.closest(".slot");
+      if (over && over !== slot) over.classList.remove("drop");
+      over = slot;
+      if (slot) slot.classList.add("drop");
+    };
+    const up = (ev) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (!ghost) return;
+      ghost.remove();
+      if (over) over.classList.remove("drop");
+      dragJustEnded = true;
+      setTimeout(() => { dragJustEnded = false; }, 50);
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const slot = hit && hit.closest(".slot");
+      if (slot) {
+        const r = +slot.dataset.r, s = +slot.dataset.s;
+        if (isBlocked(r, s)) { shakeSlot(r, s); sfx.bad(); return; }
+        placeAt(r, s, t);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  });
+}
+
+// ===== 정답 내기 =====
+const boardData = () => G.board.map((row) => row.map((c) => (c ? { t: c.t, s: c.s } : null)));
+
+async function submit() {
+  if (G.busy || G.done) return;
+  G.busy = true;
+  const token = G.token;
+  const r = await api(`/api/play/${token}/submit`, { board: boardData() });
+  if (!G || G.token !== token) return;
+  if (r.data.over) return rushOver(r.data.result);
+  if (!r.ok) {
+    G.busy = false;
+    toast(r.data.error || "확인하지 못했어요");
+    if (r.status === 404 || r.status === 409) goHome();
+    return;
+  }
+  if (!r.data.win) { G.busy = false; toast(MSG[r.data.status] ? "아직 아니에요" : "다시 확인해 봐요"); return; }
+
+  sfx.win();
+  vibe([30, 60, 30]);
+  $("board").classList.remove("won");
+  void $("board").offsetWidth;
+  $("board").classList.add("won");
+
+  if (G.kind === "rush") {
+    const d = r.data;
+    floatAt($("energy"), `+${d.gain}점`, "");
+    setTimeout(() => floatAt($("energy"), `+${d.refill}초`, "good"), 250);
+    if (d.level_up) setTimeout(() => floatAt($("rush-level"), `레벨 ${d.level}!`, ""), 500);
+    const parts = [`기본 ${d.parts.base}`];
+    if (d.parts.efficiency) parts.push(`알뜰 +${d.parts.efficiency}`);
+    if (d.parts.speed) parts.push(`빠름 +${d.parts.speed}`);
+    toast(parts.join(" · "), 1600);
+    setTimeout(() => {
+      if (!G || G.token !== token) return;
+      G.pz = d.puzzle;
+      resetBoard();
+      syncRush(d);
+      G.busy = false;
+      renderGame();
+    }, 650);
+    return;
+  }
+  G.done = true;
+  stopClock();
+  if (G.kind === "stage") markCleared(G.pz.no, r.data.stars);
+  if (G.kind === "stage" && r.data.guest_proof) {
+    const no = G.pz.no;
+    guest.stars[no] = Math.max(guest.stars[no] || 0, r.data.stars);
+    guest.tokens[no] = r.data.guest_proof;
+    saveGuest();
+  }
+  if (r.data.wallet) renderWallet(r.data.wallet);
+  setTimeout(() => showResult(r.data), 750);
+}
+
+function line(label, value, cls) {
+  const d = el("div");
+  const b = el("b", cls, value);
+  d.append(el("span", null, label), b);
+  return d;
+}
+
+function showResult(d) {
+  const lines = $("r-lines");
+  lines.innerHTML = "";
+  const stars = $("r-stars");
+  stars.innerHTML = "";
+  for (let i = 1; i <= 3; i++) stars.append(icon("i-star", i <= d.stars ? "on" : ""));
+  stars.setAttribute("aria-label", `별 ${d.stars}개`);
+  $("r-title").textContent = d.stars === 3 ? "완벽해요!" : "불이 켜졌어요!";
+  lines.append(line("쓴 건전지", `${d.used}개 (가장 적게: ${d.min}개)`));
+  lines.append(line("걸린 시간", `${d.secs}초`));
+  if (d.coins) lines.append(line("받은 코인", `+${d.coins}`, "coin"));
+  const extra = $("r-extra");
+  extra.textContent = "";
+  if (d.stars < 3) extra.textContent = `건전지 ${d.min}개로도 풀 수 있어요. 다시 해 볼까요?`;
+
+  const next = $("r-next");
+  if (G.kind === "daily") {
+    if (d.rank) lines.append(line("오늘 순위", `${d.rank.total}명 중 ${d.rank.rank}등`));
+    $("r-title").textContent = "오늘의 퍼즐 완료!";
+    next.textContent = "오늘 순위 보기";
+    next.onclick = () => { closeModal("result-modal"); openRank("daily"); };
+    $("r-list").textContent = "처음으로";
+    $("r-list").onclick = () => { closeModal("result-modal"); goHome(); };
+    $("r-retry").onclick = () => { closeModal("result-modal"); startDaily(); };
+  } else {
+    const no = G.pz.no;
+    $("r-list").textContent = "목록";
+    $("r-list").onclick = () => { closeModal("result-modal"); openStages(); };
+    $("r-retry").onclick = () => { closeModal("result-modal"); startStage(no); };
+    if (!d.next) {
+      next.textContent = "타임어택 도전";
+      next.onclick = () => { closeModal("result-modal"); startRush(); };
+      extra.textContent = "모든 스테이지를 깼어요! 🎉";
+      confetti();
+    } else if (!ME.id && d.next > META.guest_max) {
+      next.textContent = "가입하고 계속하기";
+      next.onclick = () => { closeModal("result-modal"); openAuth("signup", "가입하면 지금까지 깬 기록을 그대로 옮겨 드려요."); };
+    } else {
+      next.textContent = `다음 스테이지 ${d.next}`;
+      next.onclick = () => { closeModal("result-modal"); startStage(d.next); };
+    }
+    if (d.first && d.stars === 3) confetti();
+  }
+  if (d.coins) setTimeout(sfx.coin, 500);
+  openModal("result-modal");
+  setTimeout(() => next.focus(), 50);
+}
+
+// ===== 걸린 시간 (스테이지·오늘의 퍼즐) =====
+let clockTimer = null;
+function startClock() {
+  stopClock();
+  const tick = () => {
+    if (!G) return;
+    const s = Math.floor((Date.now() - G.t0) / 1000);
+    $("g-clock").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  tick();
+  clockTimer = setInterval(tick, 500);
+}
+function stopClock() { clearInterval(clockTimer); clockTimer = null; }
+
+// ===== 타임어택: 전력이 닳는다 =====
+let rushTimer = null;
+let lastTickSec = null;
+function syncRush(d) {
+  G.rush = { deadline: performance.now() / 1000 + d.left, max: d.max, score: d.score, solved: d.solved, level: d.level };
+  $("rush-score").textContent = d.score;
+  $("rush-solved").textContent = d.solved;
+  $("rush-level").textContent = d.level;
+  $("energy").setAttribute("aria-valuemax", d.max);
+}
+const rushLeft = () => (G && G.rush ? Math.max(0, G.rush.deadline - performance.now() / 1000) : 0);
+function setCharge() {
+  // 타임어택에서는 건전지 그림도 남은 전력만큼만 채워져 보인다
+  const c = G && G.kind === "rush" && G.rush ? Math.max(0.05, rushLeft() / 60) : 1;
+  document.querySelectorAll("#view-game .batt").forEach((b) => b.style.setProperty("--charge", Math.min(1, c).toFixed(3)));
+}
+function startRushClock() {
+  stopRushClock();
+  lastTickSec = null;
+  rushTimer = setInterval(() => {
+    if (!G || G.kind !== "rush" || G.ending) return;
+    const l = rushLeft();
+    const pct = Math.min(100, (l / G.rush.max) * 100);
+    $("energy-fill").style.width = `calc(${pct}% - 4px)`;
+    $("energy-text").textContent = `${l.toFixed(1)}초`;
+    $("energy").setAttribute("aria-valuenow", Math.round(l));
+    $("energy").classList.toggle("mid", l <= 25 && l > 10);
+    $("energy").classList.toggle("low", l <= 10);
+    const sec = Math.ceil(l);
+    if (l <= 10 && sec !== lastTickSec && sec > 0) { sfx.tick(); lastTickSec = sec; }
+    setCharge();
+    if (l <= 0) endRush();
+  }, 100);
+}
+function stopRushClock() { clearInterval(rushTimer); rushTimer = null; }
+
+async function endRush() {
+  if (!G || G.ending) return;
+  G.ending = true;
+  stopRushClock();
+  const r = await api(`/api/play/${G.token}/finish`, {});
+  if (r.data.result) rushOver(r.data.result);
+  else if (r.status === 409) goHome();
+}
+
+function rushOver(res) {
+  stopRushClock();
+  if (G) { G.done = true; G.ending = true; }
+  sfx.over();
+  vibe([60, 40, 60]);
+  $("o-score").textContent = res.score;
+  const lines = $("o-lines");
+  lines.innerHTML = "";
+  lines.append(line("푼 회로", `${res.solved}개`));
+  lines.append(line("내 최고 점수", `${res.best}점`));
+  if (res.coins) lines.append(line("받은 코인", `+${res.coins}`, "coin"));
+  $("o-title").textContent = res.new_best ? "새 최고 기록!" : "전력이 다 닳았어요";
+  if (res.new_best) confetti();
+  api("/me").then((r) => { if (r.data.wallet) renderWallet(r.data.wallet); });
+  openModal("over-modal");
+  setTimeout(() => $("o-again").focus(), 50);
+}
+
+// ===== 아이템 =====
+function needLogin(why) {
+  if (ME.id) return false;
+  openAuth("login", why);
+  return true;
+}
+function noItem(r) {
+  toast(r.data.error || "쓸 수 없어요");
+  if (r.data.shop) setTimeout(() => openShop(), 600);
+}
+
+async function useMeter() {
+  if (!G || G.done || G.busy) return;
+  if (needLogin("아이템은 로그인하면 쓸 수 있어요. 처음에 몇 개 드려요!")) return;
+  const r = await api(`/api/play/${G.token}/item`, { item: "meter", board: boardData() });
+  if (r.data.over) return rushOver(r.data.result);
+  if (!r.ok) return noItem(r);
+  sfx.item();
+  renderWallet(r.data.wallet);
+  if (r.data.left != null) syncRush(r.data);
+  const h = r.data.hint;
+  G.hint = h;
+  if (h.action === "place") {
+    G.sel = h.t;
+    toast(`반짝이는 칸에 ${BAT[h.t].name} ${volt(U[h.t])}${h.s < 0 ? "를 뒤집어서(−)" : "를"} 놓아요`, 3200);
+  } else if (h.action === "flip") toast("반짝이는 건전지를 눌러서 뒤집어요", 3000);
+  else if (h.action === "remove") toast("반짝이는 건전지는 빼야 해요 (× 누르기)", 3000);
+  renderCircuit();
+  renderTray();
+  renderStatus();
+}
+
+function toggleBreaker() {
+  if (!G || G.done || G.busy) return;
+  if (needLogin("아이템은 로그인하면 쓸 수 있어요. 처음에 몇 개 드려요!")) return;
+  if (!ME.wallet.breaker) { toast("누전 차단기가 없어요"); setTimeout(openShop, 600); return; }
+  G.breaker = !G.breaker;
+  G.sel = null;
+  if (G.breaker) toast("고칠 번개 칸을 눌러요");
+  renderCircuit();
+  renderTray();
+  renderTools();
+  renderStatus();
+}
+async function useBreaker(r, s) {
+  const res = await api(`/api/play/${G.token}/item`, { item: "breaker", row: r, slot: s });
+  if (res.data.over) return rushOver(res.data.result);
+  G.breaker = false;
+  if (!res.ok) { noItem(res); renderCircuit(); return; }
+  sfx.item();
+  G.unblocked = res.data.unblocked;
+  renderWallet(res.data.wallet);
+  if (res.data.left != null) syncRush(res.data);
+  toast("칸을 고쳤어요! 이제 놓을 수 있어요");
+  renderCircuit();
+  renderTools();
+  renderStatus();
+}
+async function useCharger() {
+  if (!G || G.kind !== "rush" || G.done) return;
+  const r = await api(`/api/play/${G.token}/item`, { item: "charger" });
+  if (r.data.over) return rushOver(r.data.result);
+  if (!r.ok) return noItem(r);
+  sfx.item();
+  renderWallet(r.data.wallet);
+  syncRush(r.data);
+  floatAt($("energy"), "+15초", "good");
+}
+async function skipPuzzle() {
+  if (!G || G.kind !== "rush" || G.done || G.busy) return;
+  G.busy = true;
+  const r = await api(`/api/play/${G.token}/skip`, {});
+  if (r.data.over) return rushOver(r.data.result);
+  G.busy = false;
+  if (!r.ok) return toast(r.data.error || "건너뛰지 못했어요");
+  floatAt($("energy"), "−10초", "bad");
+  G.pz = r.data.puzzle;
+  resetBoard();
+  syncRush(r.data);
+  renderGame();
+}
+
+function clearBoard() {
+  if (!G || G.done || G.busy) return;
+  if (!G.board.some((row) => row.some(Boolean))) return;
+  G.board = G.pz.rows.map((cap) => Array(cap).fill(null));
+  G.hint = null;
+  sfx.remove();
+  afterChange();
+}
+
+function leaveGame() {
+  if (G && G.kind === "rush" && !G.done) {
+    if (!confirm("그만두면 지금 점수로 끝나요. 그만둘까요?")) return;
+    return endRush();
+  }
+  const fromStage = G && G.kind === "stage";
+  G = null;
+  stopClock();
+  if (fromStage) openStages(); else goHome();
+}
+
+// ===== 랭킹 =====
+const RANK_DESC = {
+  rush: "타임어택 최고 점수 (전체 기간)",
+  week: "최근 7일 동안의 타임어택 최고 점수",
+  daily: "오늘의 퍼즐: 건전지를 적게, 빨리 쓴 순서",
+  stars: "스테이지에서 모은 별",
+};
+let rankKind = "rush";
+async function openRank(kind) {
+  rankKind = kind || rankKind;
+  show("rank");
+  document.querySelectorAll("#rank-seg button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.kind === rankKind);
+    b.setAttribute("aria-selected", b.dataset.kind === rankKind ? "true" : "false");
+  });
+  $("rank-desc").textContent = RANK_DESC[rankKind];
+  const list = $("rank-list");
+  list.innerHTML = "";
+  const r = await api("/api/ranking?kind=" + rankKind);
+  if (!r.ok) return;
+  if (!r.data.items.length) {
+    list.append(el("li", "empty", "아직 기록이 없어요. 첫 번째가 되어 보세요!"));
+    return;
+  }
+  const unit = { rush: "점", week: "점", daily: "개", stars: "★" }[rankKind];
+  r.data.items.forEach((it) => {
+    const li = el("li", it.me ? "me" : "");
+    li.append(el("span", "rk-no" + (it.rank <= 3 ? " m" + it.rank : ""), it.rank <= 3 ? ["🥇", "🥈", "🥉"][it.rank - 1] : it.rank));
+    const name = el("div", "rk-name");
+    name.append(document.createTextNode(it.name));
+    if (it.me) name.append(el("small", null, "나"));
+    name.append(el("div", "rk-sub", it.sub));
+    li.append(name, el("span", "rk-val", `${it.value}${unit}`));
+    list.append(li);
+  });
+}
+
+// ===== 상점 =====
+const ITEM_ICON = { meter: "i-meter", breaker: "i-breaker", charger: "i-charger" };
+function openShop() {
+  if (needLogin("상점은 로그인하면 쓸 수 있어요.")) return;
+  renderShop();
+  openModal("shop-modal");
+}
+function renderShop() {
+  $("shop-coins").textContent = ME.wallet.coins;
+  const box = $("shop-list");
+  box.innerHTML = "";
+  Object.entries(META.items).forEach(([k, it]) => {
+    const p = META.prices[k];
+    const row = el("div", "shop-item");
+    const ic = el("span", "si-icon");
+    ic.append(icon(ITEM_ICON[k]));
+    const tx = el("div", "si-text grow");
+    tx.append(el("b", null, it.name), el("small", null, it.desc), el("div", "si-have", `가진 것 ${ME.wallet[k]}개`));
+    const buy = el("div", "si-buy");
+    [[1, p], [3, p * 3 - Math.floor(p / 2)]].forEach(([q, price]) => {
+      const b = el("button", q === 3 ? "deal" : "");
+      b.append(`${q}개 `, icon("i-coin"), String(price));
+      b.disabled = ME.wallet.coins < price;
+      b.onclick = async () => {
+        const r = await api("/api/shop/buy", { item: k, qty: q });
+        if (!r.ok) return toast(r.data.error || "사지 못했어요");
+        sfx.coin();
+        renderWallet(r.data.wallet);
+        renderShop();
+        toast(`${it.name} ${q}개를 샀어요`);
+      };
+      buy.append(b);
+    });
+    row.append(ic, tx, buy);
+    box.append(row);
+  });
+}
+
+// ===== 하는 방법 그림 =====
+function helpArt() {
+  const mini = (items, label) => {
+    const r = el("div", "mini-row");
+    items.forEach(([t, s]) => r.append(battEl(t, s)));
+    const box = el("div");
+    box.append(r);
+    if (label) box.append(el("div", "mini-row", label));
+    return box;
+  };
+  const h1 = $("hs-1"), h2 = $("hs-2"), h3 = $("hs-3");
+  h1.innerHTML = h2.innerHTML = h3.innerHTML = "";
+  h1.append(mini([["a", 1], ["c", 1]], "1.5 + 3 = 4.5V"));
+  h2.append(mini([["n", 1], ["a", -1]], "9 − 1.5 = 7.5V"));
+  h3.append(mini([["l", 1]]), mini([["c", 1], ["c", 1]], "두 줄 다 6V"));
+}
+
+// ===== 창 열고 닫기 =====
+function openModal(id) {
+  $(id).classList.remove("hidden");
+  const f = $(id).querySelector("input, button.primary, [data-close]");
+  if (f) setTimeout(() => f.focus(), 30);
+}
+function closeModal(id) { $(id).classList.add("hidden"); }
+const openModalEl = () => document.querySelector(".modal:not(.hidden)");
+
+function openAuth(which, why) {
+  $("auth-why").textContent = why || "";
+  $("login-err").textContent = "";
+  $("signup-err").textContent = "";
+  $("login-form").classList.toggle("hidden", which === "signup");
+  $("signup-form").classList.toggle("hidden", which !== "signup");
+  openModal("auth-modal");
+}
+async function afterAuth() {
+  closeModal("auth-modal");
+  guest = { stars: {}, tokens: {} };
+  saveGuest();
+  await loadMe();
+  await loadMeta();
+  toast(`${ME.nickname}님, 반가워요!`);
+  if (currentView === "stages") renderStages();
+  else if (currentView === "game" && G && G.done) goHome();
+  else if (currentView !== "game") goHome();
+}
+
+async function openStages() {
+  show("stages");
+  renderStages();
+  await loadMeta();
+  if (currentView === "stages") renderStages();
+}
+
+// ===== 설정 =====
+function applySettings() {
+  $("set-sound").checked = settings.sound;
+  $("set-vibrate").checked = settings.vibrate;
+  $("set-calm").checked = settings.calm;
+  document.documentElement.dataset.theme = settings.theme;
+  if (settings.calm) document.documentElement.dataset.calm = "1";
+  else delete document.documentElement.dataset.calm;
+  $("theme-color").setAttribute("content", settings.theme === "light" ? "#ecebe5" : "#1e2433");
+  document.querySelectorAll("#set-theme button").forEach((b) => b.classList.toggle("active", b.dataset.theme === settings.theme));
+}
+
+// ===== 이벤트 연결 =====
+function bind() {
+  $("brand").onclick = () => { if (currentView === "game") return leaveGame(); goHome(); };
+  $("nav-back").onclick = goBack;
+  $("card-stages").onclick = openStages;
+  $("card-rush").onclick = startRush;
+  $("card-daily").onclick = startDaily;
+  $("card-rank").onclick = () => openRank("rush");
+  $("btn-help").onclick = () => openModal("help-modal");
+  $("btn-shop").onclick = openShop;
+  $("btn-settings").onclick = () => { applySettings(); openModal("settings-modal"); };
+  $("btn-login").onclick = () => openAuth("login");
+  $("btn-user").onclick = () => { applySettings(); openModal("settings-modal"); };
+
+  $("t-clear").onclick = clearBoard;
+  $("t-meter").onclick = useMeter;
+  $("t-breaker").onclick = toggleBreaker;
+  $("t-charger").onclick = useCharger;
+  $("t-skip").onclick = skipPuzzle;
+
+  $("o-again").onclick = startRush;
+  $("o-home").onclick = () => { closeModal("over-modal"); goHome(); };
+  $("o-rank").onclick = () => { closeModal("over-modal"); G = null; openRank("rush"); };
+
+  document.querySelectorAll("#rank-seg button").forEach((b) => (b.onclick = () => openRank(b.dataset.kind)));
+
+  // 창 닫기
+  document.querySelectorAll(".modal").forEach((m) => {
+    m.addEventListener("click", (e) => {
+      if (e.target !== m) return;
+      if (m.id === "over-modal" || m.id === "result-modal") return; // 결과 창은 버튼으로만
+      closeModal(m.id);
+    });
+    m.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => closeModal(m.id)));
+  });
+
+  // 설정
+  $("set-sound").onchange = (e) => { settings.sound = e.target.checked; saveSettings(); if (settings.sound) sfx.pick(); };
+  $("set-vibrate").onchange = (e) => { settings.vibrate = e.target.checked; saveSettings(); vibe(20); };
+  $("set-calm").onchange = (e) => { settings.calm = e.target.checked; saveSettings(); applySettings(); };
+  document.querySelectorAll("#set-theme button").forEach((b) =>
+    (b.onclick = () => { settings.theme = b.dataset.theme; saveSettings(); applySettings(); }));
+  $("btn-logout").onclick = async () => {
+    await api("/logout", {});
+    closeModal("settings-modal");
+    ME = { id: null };
+    await loadMe();
+    await loadMeta();
+    goHome();
+    toast("로그아웃했어요");
+  };
+
+  // 로그인 / 가입
+  $("to-signup").onclick = (e) => { e.preventDefault(); openAuth("signup", $("auth-why").textContent); };
+  $("to-login").onclick = (e) => { e.preventDefault(); openAuth("login", $("auth-why").textContent); };
+  $("login-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const r = await api("/login", { username: f.username.value, password: f.password.value });
+    if (!r.ok) { $("login-err").textContent = r.data.error || "로그인하지 못했어요"; return; }
+    afterAuth();
+  };
+  $("signup-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const r = await api("/signup", {
+      username: f.username.value, password: f.password.value, nickname: f.nickname.value,
+      guest: Object.values(guest.tokens),
+    });
+    if (!r.ok) { $("signup-err").textContent = r.data.error || "가입하지 못했어요"; return; }
+    afterAuth();
+  };
+
+  // 키보드
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea")) return;
+    const m = openModalEl();
+    if (e.key === "Escape") {
+      if (m && m.id !== "over-modal" && m.id !== "result-modal") return closeModal(m.id);
+      if (G && (G.sel || G.breaker || G.hint)) { G.sel = null; G.breaker = false; G.hint = null; renderCircuit(); renderTray(); renderTools(); renderStatus(); }
+      return;
+    }
+    if (m || currentView !== "game" || !G) return;
+    if (/^[1-4]$/.test(e.key)) {
+      const kinds = ORDER.filter((t) => G.pz.tray[t]);
+      const t = kinds[Number(e.key) - 1];
+      if (t) selectType(t);
+    }
+  });
+}
+
+// ===== 시작 =====
+async function init() {
+  applySettings();
+  bind();
+  await Promise.all([loadMe(), loadMeta()]);
+  helpArt();
+  renderHome();
+  if (!localStorage.getItem("vc.seenHelp")) {
+    localStorage.setItem("vc.seenHelp", "1");
+    setTimeout(() => openModal("help-modal"), 400);
+  }
+}
+init();

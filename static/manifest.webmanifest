@@ -1,0 +1,12 @@
+{
+  "name": "EduSpace · 우리 반 협업 공간",
+  "short_name": "EduSpace",
+  "description": "나이스 학사일정·급식 + 학급 공유 달력·패들렛·문서함·공유 노트",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f4f6",
+  "theme_color": "#3182f6",
+  "icons": [{ "src": "/static/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }]
+}

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title id="page-title">집중노트</title>
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">집중노트</div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="timer" role="tab" aria-selected="true">타이머</button>
+      <button class="tab" data-tab="planner" role="tab" aria-selected="false">플래너</button>
+      <button class="tab" data-tab="stats" role="tab" aria-selected="false">기록</button>
+    </nav>
+    <div class="spacer"></div>
+    <span id="user-box" class="hidden"><b id="nickname"></b></span>
+    <button id="login-btn" class="ghost">로그인</button>
+    <button id="logout-btn" class="ghost hidden">로그아웃</button>
+  </header>
+
+  <main id="main">
+    <!-- ===== 타이머 탭 ===== -->
+    <section class="panel active" id="panel-timer">
+      <!-- 로그인 안 했을 때 안내 -->
+      <div id="guest-banner" class="banner hidden">
+        <span>지금은 타이머만 쓸 수 있어요. 로그인하면 공부 시간이 기록돼요.</span>
+        <button id="banner-login" class="primary small">로그인</button>
+      </div>
+      <!-- 오늘 공부량 (누르면 기록 탭) -->
+      <button id="today-strip" class="today-strip hidden" title="기록 탭에서 자세히 보기">
+        <span class="today-text">오늘 <b id="today-min">0분</b> <span class="muted-inline">/ 목표 <span id="today-goal">120분</span></span>
+          <span class="today-plans" id="today-plans"></span></span>
+        <span class="bar"><span class="bar-fill" id="today-fill"></span></span>
+      </button>
+
+      <div class="setup" id="setup">
+        <div class="modes" id="modes">
+          <button class="mode active" data-mode="focus">집중</button>
+          <button class="mode" data-mode="short">짧은 휴식</button>
+          <button class="mode" data-mode="long">긴 휴식</button>
+        </div>
+        <div class="focus-lengths" id="focus-lengths">
+          <button class="len" data-min="15">15분</button>
+          <button class="len active" data-min="25">25분</button>
+          <button class="len" data-min="50">50분</button>
+        </div>
+      </div>
+
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 220 220" aria-hidden="true">
+          <circle class="ring-bg" cx="110" cy="110" r="96" />
+          <circle class="ring-fg" id="ring-fg" cx="110" cy="110" r="96" />
+        </svg>
+        <div class="ring-center">
+          <div class="ring-subject" id="ring-subject"></div>
+          <div class="ring-plan hidden" id="ring-plan"></div>
+          <div class="time" id="time" aria-live="off">25:00</div>
+          <div class="ring-label" id="ring-label">집중</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="reset-btn" class="ghost hidden">처음으로</button>
+        <button id="start-btn" class="primary big">집중 시작</button>
+        <button id="save-now-btn" class="ghost hidden">여기까지 저장</button>
+        <button id="skip-btn" class="ghost hidden">휴식 건너뛰기</button>
+      </div>
+      <p class="note" id="timer-note" aria-live="polite"></p>
+
+      <div class="study-fields" id="study-fields">
+        <div class="linked-plan hidden" id="linked-plan">
+          <span class="lp-text">할 일 <b id="linked-plan-title"></b> 하는 중</span>
+          <button id="unlink-plan" class="link small">연결 끊기</button>
+        </div>
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">무엇을 공부하나요?</span>
+            <button id="manage-subjects" class="link small">과목 편집</button>
+          </div>
+          <div class="subject-chips" id="subject-chips"></div>
+        </div>
+        <div class="field">
+          <label for="memo" class="field-label">메모 <span class="opt">(선택)</span></label>
+          <input id="memo" maxlength="100" placeholder="예: 수학 2단원 문제풀이" />
+        </div>
+      </div>
+
+      <div class="timer-footer">
+        <label class="toggle"><input type="checkbox" id="auto-next" /> 끝나면 다음 단계 자동 시작</label>
+        <span class="shortcut-hint">스페이스바: 시작 · 일시정지</span>
+      </div>
+      <button id="manual-btn" class="link">타이머 없이 공부했나요? 직접 기록하기</button>
+    </section>
+
+    <!-- ===== 플래너 탭 ===== -->
+    <section class="panel" id="panel-planner">
+      <div id="planner-guest" class="empty hidden">
+        로그인하면 날짜별로 공부 계획을 세울 수 있어요.
+        <button id="planner-login" class="primary">로그인</button>
+      </div>
+
+      <div id="planner-body">
+        <div class="day-nav">
+          <button id="day-prev" class="ghost small" aria-label="이전 주">‹</button>
+          <div class="day-strip" id="day-strip"></div>
+          <button id="day-next" class="ghost small" aria-label="다음 주">›</button>
+        </div>
+
+        <div class="plan-head">
+          <div>
+            <h2 class="plan-date" id="plan-date">오늘</h2>
+            <div class="plan-summary" id="plan-summary"></div>
+          </div>
+          <button id="day-today" class="ghost small hidden">오늘로</button>
+        </div>
+        <div class="plan-progress"><div class="bar"><div class="bar-fill" id="plan-fill"></div></div></div>
+
+        <div id="carry-box" class="banner hidden">
+          <span id="carry-text"></span>
+          <button id="carry-btn" class="primary small">오늘로 가져오기</button>
+        </div>
+
+        <form id="plan-form" class="plan-form" autocomplete="off">
+          <input id="plan-title" maxlength="60" placeholder="할 일을 적고 Enter (예: 수학 문제집 3단원)" aria-label="새 할 일" />
+          <div class="plan-form-row">
+            <div class="subject-chips small" id="plan-chips"></div>
+            <div class="plan-target">
+              <label for="plan-target">목표</label>
+              <select id="plan-target">
+                <option value="0">시간 없음</option>
+                <option value="25">25분</option>
+                <option value="50">50분</option>
+                <option value="60">1시간</option>
+                <option value="90">1시간 30분</option>
+                <option value="120">2시간</option>
+              </select>
+            </div>
+            <button type="submit" class="primary">추가</button>
+          </div>
+          <p class="err" id="plan-err"></p>
+        </form>
+
+        <ul id="plan-list" class="plan-list"></ul>
+      </div>
+    </section>
+
+    <!-- ===== 기록 탭 ===== -->
+    <section class="panel" id="panel-stats">
+      <div id="stats-guest" class="empty hidden">
+        로그인하면 공부 기록과 통계를 볼 수 있어요.
+        <button id="stats-login" class="primary">로그인</button>
+      </div>
+
+      <div id="stats-body">
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">오늘</div>
+            <div class="card-value" id="stat-today">0분</div>
+            <div class="bar"><div class="bar-fill" id="goal-fill"></div></div>
+            <div class="card-sub"><span id="goal-text">목표 120분</span>
+              <button id="goal-edit" class="link small">바꾸기</button></div>
+          </div>
+          <div class="card">
+            <div class="card-label">연속 공부</div>
+            <div class="card-value" id="stat-streak">0일</div>
+            <div class="card-sub">하루라도 빠지면 다시 1일부터</div>
+          </div>
+          <div class="card">
+            <div class="card-label">최근 7일</div>
+            <div class="card-value" id="stat-week">0분</div>
+            <div class="card-sub">전체 <span id="stat-total">0분</span></div>
+          </div>
+        </div>
+
+        <h3 class="section-title">최근 7일</h3>
+        <div class="week-chart" id="week-chart"></div>
+
+        <h3 class="section-title">과목별 (최근 7일)</h3>
+        <div id="subject-bars" class="subject-bars"></div>
+
+        <h3 class="section-title">최근 기록</h3>
+        <ul id="session-list" class="session-list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- 과목 관리 -->
+  <div id="subject-modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" data-close>✕</button>
+      <h2>과목 관리</h2>
+      <ul id="subject-list" class="subject-list"></ul>
+      <form id="subject-form" class="inline-form">
+        <input id="new-subject" maxlength="20" placeholder="새 과목 이름" />
+        <div class="swatches" id="swatches"></div>
+        <button type="submit" class="primary">추가</button>
+      </form>
+      <p class="err" id="subject-err"></p>
+    </div>
+  </div>
+
+  <!-- 직접 입력 -->
+  <div id="manual-modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" data-close aria-label="닫기">✕</button>
+      <h2>직접 기록하기</h2>
+      <form id="manual-form" class="auth-form">
+        <span class="field-label">과목</span>
+        <div class="subject-chips" id="manual-chips"></div>
+        <label for="manual-minutes" class="field-label">공부한 시간</label>
+        <div class="quick" id="manual-quick">
+          <button type="button" data-min="15">15분</button>
+          <button type="button" data-min="30">30분</button>
+          <button type="button" data-min="60">1시간</button>
+          <button type="button" data-min="90">1시간 30분</button>
+          <button type="button" data-min="120">2시간</button>
+        </div>
+        <div class="num-row"><input id="manual-minutes" type="number" min="1" max="300" value="30" /><span>분</span></div>
+        <label for="manual-memo" class="field-label">메모 <span class="opt">(선택)</span></label>
+        <input id="manual-memo" maxlength="100" />
+        <p class="err" id="manual-err"></p>
+        <button type="submit" class="primary">기록하기</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 하루 목표 -->
+  <div id="goal-modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" data-close aria-label="닫기">✕</button>
+      <h2>하루 목표</h2>
+      <form id="goal-form" class="auth-form">
+        <div class="quick" id="goal-quick">
+          <button type="button" data-min="60">1시간</button>
+          <button type="button" data-min="120">2시간</button>
+          <button type="button" data-min="180">3시간</button>
+          <button type="button" data-min="240">4시간</button>
+          <button type="button" data-min="360">6시간</button>
+        </div>
+        <div class="num-row"><input id="goal-minutes" type="number" min="10" max="720" /><span>분</span></div>
+        <p class="err" id="goal-err"></p>
+        <button type="submit" class="primary">저장</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 로그인 / 회원가입 -->
+  <div id="auth-modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" data-close>✕</button>
+      <form id="login-form" class="auth-form">
+        <h2>로그인</h2>
+        <input name="username" placeholder="아이디" autocomplete="username" aria-label="아이디" />
+        <input name="password" type="password" placeholder="비밀번호" autocomplete="current-password" aria-label="비밀번호" />
+        <p class="err" id="login-err"></p>
+        <button type="submit" class="primary">로그인</button>
+        <p class="switch">계정이 없나요? <a href="#" id="to-signup">회원가입</a></p>
+      </form>
+      <form id="signup-form" class="auth-form hidden">
+        <h2>회원가입</h2>
+        <input name="username" placeholder="아이디 (영문·숫자 4~20자)" autocomplete="username" aria-label="아이디" />
+        <input name="password" type="password" placeholder="비밀번호 (8~64자)" autocomplete="new-password" aria-label="비밀번호" />
+        <input name="nickname" placeholder="닉네임 (1~12자)" aria-label="닉네임" />
+        <p class="err" id="signup-err"></p>
+        <button type="submit" class="primary">가입하고 시작</button>
+        <p class="switch">이미 계정이 있나요? <a href="#" id="to-login">로그인</a></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" role="status"></div>
+
+  <script src="{{ url_for('static', filename='index.js') }}"></script>
+</body>
+</html>

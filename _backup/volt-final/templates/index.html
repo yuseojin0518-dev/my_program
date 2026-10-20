@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" id="theme-color" content="#1e2433" />
+  <meta name="description" content="건전지를 직렬·병렬로 이어 목표 전압을 맞추고 전구를 켜는 두뇌 퍼즐 게임" />
+  <title>볼트 커넥션</title>
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='icon.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}" />
+  <script>
+    // 화면을 그리기 전에 고른 밝기를 먼저 붙인다 (깜빡임 방지)
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem("vc.settings") || "{}");
+        document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark";
+        if (s.calm) document.documentElement.dataset.calm = "1";
+      } catch (e) { document.documentElement.dataset.theme = "dark"; }
+    })();
+  </script>
+</head>
+<body>
+  <!-- 직접 그린 아이콘 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2 5 13.5h6L9.5 22 19 9.5h-6z" fill="currentColor"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12.8 6.5 9 12.6h3.2l-1 4.9 3.8-6.1h-3.2z" fill="var(--coin-ink, #6b4b00)"/></symbol>
+    <symbol id="i-meter" viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 16l4-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16" r="1.8" fill="currentColor"/></symbol>
+    <symbol id="i-breaker" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="7" width="6" height="6" rx="1.5" fill="currentColor"/><path d="M9 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-charger" viewBox="0 0 24 24"><rect x="3" y="7" width="16" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M21 10.5v3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M11.8 8.6 8.8 12.5h2.6l-.8 3 3-3.9h-2.6z" fill="currentColor"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.8 5.8 6.3.8-4.6 4.4 1.2 6.3L12 17l-5.7 3.1 1.2-6.3L2.9 9.4l6.3-.8z" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="currentColor"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v4M8 20h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12.6 11.8 10.3 15h1.9l-.6 2.6 2.3-3.2H12z" fill="currentColor"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2" fill="currentColor"/><rect x="13" y="4" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="4" y="13" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="13" y="13" width="7" height="7" rx="2" fill="currentColor" opacity=".3"/></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2-2.5 3.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-shop" viewBox="0 0 24 24"><path d="M4 9h16l-1.5 11h-13z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 9V7a3.5 3.5 0 0 1 7 0v2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-padlock" viewBox="0 0 24 24"><rect x="6" y="11" width="12" height="9" rx="2" fill="currentColor"/><path d="M8.5 11V8.5a3.5 3.5 0 0 1 7 0V11" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+    <symbol id="i-medal" viewBox="0 0 24 24"><path d="M8 2h3l1.5 5L14 2h3l-3 7" fill="currentColor" opacity=".6"/><circle cx="12" cy="15" r="6.5" fill="currentColor"/><path d="M12 11.6l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" fill="var(--panel)"/></symbol>
+    <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14.5 3.5l6 6-7.5 7.5-6-6z" fill="currentColor"/><path d="M6 12.5l5.5 5.5c-.5 2.6-3 4-6.5 3.5.6-1 1-2.2.5-3.5-.6-1.6.1-4 .5-5.5z" fill="currentColor" opacity=".6"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 3.2a5 5 0 0 0-5.6 6.9L3.5 15.7a2 2 0 0 0 2.8 2.8l5.6-5.6a5 5 0 0 0 6.9-5.6l-3 3-2.6-.6-.6-2.6z" fill="currentColor"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.2-9.3C1.6 7.8 4 4.5 7.3 4.5c2 0 3.6 1.1 4.7 2.7 1.1-1.6 2.7-2.7 4.7-2.7 3.3 0 5.7 3.3 4.5 6.7-1.7 4.7-9.2 9.3-9.2 9.3z" fill="currentColor"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <header id="topbar">
+    <button id="nav-back" class="icon-btn hidden" aria-label="뒤로"><svg><use href="#i-back"/></svg></button>
+    <button class="brand" id="brand" aria-label="처음 화면으로">
+      <span class="brand-mark" aria-hidden="true"><svg><use href="#i-bolt"/></svg></span>
+      <span class="brand-name">볼트 커넥션</span>
+    </button>
+    <div class="spacer"></div>
+    <div class="wallet hidden" id="wallet" aria-label="가진 것">
+      <span class="chip coin" title="코인"><svg aria-hidden="true"><use href="#i-coin"/></svg><b id="w-coins">0</b></span>
+      <span class="chip item" title="전압계"><svg aria-hidden="true"><use href="#i-meter"/></svg><b id="w-meter">0</b></span>
+      <span class="chip item" title="누전 차단기"><svg aria-hidden="true"><use href="#i-breaker"/></svg><b id="w-breaker">0</b></span>
+      <span class="chip item" title="충전기"><svg aria-hidden="true"><use href="#i-charger"/></svg><b id="w-charger">0</b></span>
+    </div>
+    <button id="btn-settings" class="icon-btn" aria-label="설정"><svg><use href="#i-gear"/></svg></button>
+    <button id="btn-login" class="pill">로그인</button>
+    <button id="btn-user" class="pill hidden" aria-label="내 계정"></button>
+  </header>
+
+  <main id="main">
+    <!-- ===== 처음 화면 ===== -->
+    <section class="view active" id="view-home" aria-label="처음 화면">
+      <div class="hero small">
+        <svg class="hero-bulb" viewBox="0 0 120 150" aria-hidden="true">
+          <circle class="hb-glow" cx="60" cy="56" r="56"/>
+          <path class="hb-glass" d="M60 10a42 42 0 0 1 26 75c-6 5-8 10-8 16H42c0-6-2-11-8-16a42 42 0 0 1 26-75z"/>
+          <path class="hb-fil" d="M45 72l7-15 8 15 8-15 7 15"/>
+          <rect class="hb-base" x="41" y="104" width="38" height="9" rx="3"/>
+          <rect class="hb-base" x="43" y="116" width="34" height="8" rx="3"/>
+          <rect class="hb-base2" x="49" y="127" width="22" height="8" rx="4"/>
+        </svg>
+        <div>
+          <h1>볼트 커넥션</h1>
+          <p>건전지를 이어 <b>목표 전압</b>을 맞추면 전구가 켜져요.</p>
+        </div>
+      </div>
+
+      <!-- 로그인 안 했을 때 -->
+      <div class="guest-strip hidden" id="guest-strip">
+        <div><b>로그인하면 더 많이 놀 수 있어요</b><small>레벨 · 출석 보상 · 오늘의 미션 · 퍼즐 공방 · 타임어택</small></div>
+        <button id="guest-login" class="primary small-btn">시작하기</button>
+      </div>
+
+      <!-- 레벨 · 출석 -->
+      <div class="profile hidden" id="profile">
+        <div class="pf-badge" id="pf-level">1</div>
+        <div class="pf-main">
+          <div class="pf-title"><b id="pf-title">견습 전기공</b><span id="pf-xp"></span></div>
+          <div class="pf-bar"><div class="pf-fill" id="pf-fill"></div></div>
+        </div>
+        <button class="checkin" id="btn-checkin"><span class="ck-gift" aria-hidden="true">🎁</span><span class="ck-day" id="ck-day">행운 상자</span><span id="ck-text">오늘 열기</span></button>
+      </div>
+
+      <!-- 오늘의 미션 -->
+      <div class="missions hidden" id="missions">
+        <div class="ms-head"><b>오늘의 미션</b><span id="ms-sub"></span></div>
+        <ul id="ms-list"></ul>
+        <button class="ms-bonus hidden" id="ms-bonus"></button>
+      </div>
+
+      <div class="mode-grid">
+        <div class="tile tile-stage wide" id="card-stages">
+          <div class="tile-top">
+            <span class="tile-ic"><svg aria-hidden="true"><use href="#i-grid"/></svg></span>
+            <div class="grow">
+              <span class="tile-title">스테이지</span>
+              <span class="tile-sub" id="mc-stages">36단계 · 9개 장</span>
+            </div>
+            <span class="tile-badge hidden" data-go="stages">미션</span>
+          </div>
+          <div class="tile-actions">
+            <button id="btn-continue" class="tile-btn main">
+              <span class="cont-kicker" id="cont-kicker">처음 시작하기</span>
+              <span class="cont-title" id="cont-title">스테이지 1 · 첫 불빛</span>
+            </button>
+            <button id="btn-stage-list" class="tile-btn">목록</button>
+          </div>
+        </div>
+        <button class="tile tile-rush" id="card-rush">
+          <span class="tile-badge hidden" data-go="rush">미션</span>
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-timer"/></svg></span>
+          <span class="tile-title">타임어택</span>
+          <span class="tile-sub" id="mc-rush">전력이 닳기 전에!</span>
+        </button>
+        <button class="tile tile-daily" id="card-daily">
+          <span class="tile-badge hidden" data-go="daily">미션</span>
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-calendar"/></svg></span>
+          <span class="tile-title">오늘의 퍼즐</span>
+          <span class="tile-sub" id="mc-daily">모두 같은 문제</span>
+        </button>
+        <button class="tile tile-workshop" id="card-workshop">
+          <span class="tile-badge hidden" data-go="workshop">미션</span>
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-wrench"/></svg></span>
+          <span class="tile-title">퍼즐 공방</span>
+          <span class="tile-sub" id="mc-workshop">만들고, 남의 퍼즐 풀기</span>
+        </button>
+        <button class="tile tile-practice" id="card-practice">
+          <span class="tile-badge hidden" data-go="practice">미션</span>
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-target"/></svg></span>
+          <span class="tile-title">연습</span>
+          <span class="tile-sub" id="mc-practice">레벨 골라 무한 풀기</span>
+        </button>
+        <button class="tile tile-rank" id="card-rank">
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-trophy"/></svg></span>
+          <span class="tile-title">랭킹</span>
+          <span class="tile-sub" id="mc-rank">점수·레벨 순위</span>
+        </button>
+        <button class="tile tile-ach" id="card-ach">
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-medal"/></svg></span>
+          <span class="tile-title">업적</span>
+          <span class="tile-sub" id="mc-ach">달성하면 코인 보상</span>
+        </button>
+        <button class="tile tile-shop" id="card-shop">
+          <span class="tile-ic"><svg aria-hidden="true"><use href="#i-shop"/></svg></span>
+          <span class="tile-title">상점</span>
+          <span class="tile-sub" id="mc-shop">아이템 · 건전지 꾸미기</span>
+        </button>
+      </div>
+
+      <div class="home-links">
+        <button id="btn-help" class="ghost"><svg aria-hidden="true"><use href="#i-help"/></svg>하는 방법</button>
+        <button id="btn-shop" class="ghost hidden"><svg aria-hidden="true"><use href="#i-shop"/></svg>상점</button>
+      </div>
+    </section>
+
+    <!-- ===== 퍼즐 공방: 목록 ===== -->
+    <section class="view" id="view-workshop" aria-labelledby="h-workshop">
+      <div class="title-row">
+        <h2 class="view-title" id="h-workshop">퍼즐 공방</h2>
+        <button id="ws-new" class="primary small-btn">+ 퍼즐 만들기</button>
+      </div>
+      <p class="view-sub">다른 사람이 만든 퍼즐을 풀고 좋아요를 눌러 주세요. 내가 만든 퍼즐도 올릴 수 있어요.</p>
+      <div class="seg" id="ws-seg" role="tablist" aria-label="정렬">
+        <button data-sort="new" class="active" role="tab">새로 올라온</button>
+        <button data-sort="popular" role="tab">인기</button>
+        <button data-sort="mine" role="tab">내 퍼즐</button>
+      </div>
+      <ul class="ws-list" id="ws-list"></ul>
+    </section>
+
+    <!-- ===== 퍼즐 공방: 만들기 ===== -->
+    <section class="view" id="view-maker" aria-labelledby="h-maker">
+      <h2 class="view-title" id="h-maker">퍼즐 만들기</h2>
+      <p class="view-sub">줄·칸·목표 전압·건전지를 정하고, 칸을 눌러 누전(⚡)·＋칸·−칸으로 바꿔요. 풀 수 있는 퍼즐만 올라가요.</p>
+      <div class="mk-group">
+        <label class="mk-row"><span>이름</span><input id="mk-title" maxlength="20" placeholder="예: 9V 함정" /></label>
+        <div class="mk-row"><span>줄 수</span><div class="seg small" id="mk-rows"><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button></div></div>
+        <div class="mk-row"><span>필요한 줄</span><div class="seg small" id="mk-need"></div></div>
+        <div class="mk-row"><span>목표 전압</span>
+          <div class="stepper"><button data-d="-6">−3</button><button data-d="-1">−0.5</button><b id="mk-target">6V</b><button data-d="1">+0.5</button><button data-d="6">+3</button></div>
+        </div>
+        <div class="mk-row tray-row"><span>쓸 건전지</span><div class="mk-tray" id="mk-tray"></div></div>
+      </div>
+      <div class="board mk-board">
+        <div class="mk-board-head"><span>칸을 눌러 바꾸기: 보통 → ⚡누전 → ＋ → −</span></div>
+        <div class="circuit" id="mk-circuit"></div>
+      </div>
+      <div class="mk-status" id="mk-status" aria-live="polite"></div>
+      <div class="r-actions">
+        <button id="mk-cancel" class="secondary">그만두기</button>
+        <button id="mk-publish" class="primary" disabled>공방에 올리기</button>
+      </div>
+    </section>
+
+    <!-- ===== 스테이지 고르기 ===== -->
+    <section class="view" id="view-stages" aria-labelledby="h-stages">
+      <h2 class="view-title" id="h-stages">스테이지</h2>
+      <p class="view-sub" id="stage-summary"></p>
+      <div id="chapter-list"></div>
+    </section>
+
+    <!-- ===== 게임판 ===== -->
+    <section class="view" id="view-game" aria-labelledby="g-title">
+      <div class="game-head">
+        <div class="gh-text">
+          <div class="game-kicker" id="g-kicker"></div>
+          <h2 id="g-title"></h2>
+        </div>
+        <div class="game-clock" id="g-clock" aria-label="걸린 시간"></div>
+      </div>
+
+      <!-- 타임어택 전력 -->
+      <div class="rush-hud hidden" id="rush-hud">
+        <div class="energy" role="progressbar" aria-label="남은 전력" aria-valuemin="0" id="energy">
+          <div class="energy-fill" id="energy-fill"></div>
+          <span class="energy-text" id="energy-text"></span>
+          <span class="energy-cap" aria-hidden="true"></span>
+        </div>
+        <div class="rush-nums">
+          <span>점수 <b id="rush-score">0</b></span>
+          <span>푼 회로 <b id="rush-solved">0</b></span>
+          <span>레벨 <b id="rush-level">1</b></span>
+        </div>
+      </div>
+
+      <div class="tip hidden" id="g-tip"></div>
+
+      <div class="board" id="board">
+        <div class="lamp">
+          <svg class="bulb" id="bulb" viewBox="0 0 120 150" role="img" aria-label="전구">
+            <circle class="b-glow" cx="60" cy="56" r="58"/>
+            <path class="b-glass" d="M60 10a42 42 0 0 1 26 75c-6 5-8 10-8 16H42c0-6-2-11-8-16a42 42 0 0 1 26-75z"/>
+            <path class="b-fil" d="M45 72l7-15 8 15 8-15 7 15"/>
+            <rect class="b-base" x="41" y="104" width="38" height="9" rx="3"/>
+            <rect class="b-base" x="43" y="116" width="34" height="8" rx="3"/>
+            <rect class="b-base2" x="49" y="127" width="22" height="8" rx="4"/>
+            <g class="b-spark"><path d="M14 30l8 4-6 3 9 5"/><path d="M106 34l-8 3 6 4-9 4"/></g>
+          </svg>
+          <div class="lamp-info">
+            <div class="target-label">목표 전압</div>
+            <div class="target" id="g-target">0V</div>
+            <div class="need" id="g-need"></div>
+          </div>
+        </div>
+
+        <div class="circuit" id="circuit"></div>
+
+        <div class="meter" id="meter">
+          <span class="meter-out" id="meter-out">0V</span>
+          <span class="meter-msg" id="meter-msg" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div class="tray-head">
+        <span class="tray-title">건전지</span>
+        <span class="tray-help">눌러서 고른 뒤 빈 칸에 놓기 · 끌어다 놓기 · 놓은 건전지를 누르면 뒤집기</span>
+      </div>
+      <div class="tray" id="tray" role="group" aria-label="쓸 수 있는 건전지"></div>
+
+      <div class="game-tools" id="game-tools">
+        <button id="t-clear" class="tool"><svg aria-hidden="true"><use href="#i-x"/></svg><span>다 빼기</span></button>
+        <button id="t-meter" class="tool"><svg aria-hidden="true"><use href="#i-meter"/></svg><span>전압계</span><b class="badge" id="b-meter"></b></button>
+        <button id="t-breaker" class="tool"><svg aria-hidden="true"><use href="#i-breaker"/></svg><span>차단기</span><b class="badge" id="b-breaker"></b></button>
+        <button id="t-charger" class="tool hidden"><svg aria-hidden="true"><use href="#i-charger"/></svg><span>충전기 +15초</span><b class="badge" id="b-charger"></b></button>
+        <button id="t-skip" class="tool hidden"><svg aria-hidden="true"><use href="#i-back" style="transform:scaleX(-1);transform-origin:center"/></svg><span>건너뛰기 −10초</span></button>
+      </div>
+      <p class="star-goal" id="g-goal"></p>
+    </section>
+
+    <!-- ===== 연습: 레벨 고르기 ===== -->
+    <section class="view" id="view-practice" aria-labelledby="h-practice">
+      <h2 class="view-title" id="h-practice">연습</h2>
+      <p class="view-sub">시간 제한 없이 원하는 레벨의 문제를 계속 풀어요. 기록은 업적에만 쌓여요.</p>
+      <div class="level-grid" id="level-grid"></div>
+      <div class="level-legend" id="level-legend"></div>
+    </section>
+
+    <!-- ===== 업적 ===== -->
+    <section class="view" id="view-ach" aria-labelledby="h-ach">
+      <h2 class="view-title" id="h-ach">업적</h2>
+      <p class="view-sub" id="ach-summary"></p>
+      <div class="stat-grid" id="stat-grid"></div>
+      <ul class="ach-list" id="ach-list"></ul>
+    </section>
+
+    <!-- ===== 랭킹 ===== -->
+    <section class="view" id="view-rank" aria-labelledby="h-rank">
+      <h2 class="view-title" id="h-rank">랭킹</h2>
+      <div class="seg" id="rank-seg" role="tablist" aria-label="랭킹 종류">
+        <button data-kind="rush" class="active" role="tab">타임어택</button>
+        <button data-kind="week" role="tab">이번 주</button>
+        <button data-kind="daily" role="tab">오늘의 퍼즐</button>
+        <button data-kind="stars" role="tab">별</button>
+        <button data-kind="level" role="tab">레벨</button>
+      </div>
+      <p class="view-sub" id="rank-desc"></p>
+      <ol class="rank-list" id="rank-list"></ol>
+    </section>
+  </main>
+
+  <!-- ===== 결과 (스테이지·오늘의 퍼즐) ===== -->
+  <div class="modal hidden" id="result-modal" role="dialog" aria-modal="true" aria-labelledby="r-title">
+    <div class="sheet result">
+      <div class="r-bulb" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-bolt"/></svg></div>
+      <h2 id="r-title">불이 켜졌어요!</h2>
+      <div class="r-stars" id="r-stars" aria-label="별"></div>
+      <div class="r-lines" id="r-lines"></div>
+      <div class="r-extra" id="r-extra"></div>
+      <div class="r-suggest hidden" id="r-suggest"></div>
+      <div class="r-actions">
+        <button id="r-retry" class="secondary">다시 하기</button>
+        <button id="r-list" class="secondary">목록</button>
+        <button id="r-next" class="primary">다음 스테이지</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 타임어택 끝 ===== -->
+  <div class="modal hidden" id="over-modal" role="dialog" aria-modal="true" aria-labelledby="o-title">
+    <div class="sheet result">
+      <div class="r-bulb off" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-charger"/></svg></div>
+      <h2 id="o-title">전력이 다 닳았어요</h2>
+      <div class="o-score" id="o-score">0</div>
+      <div class="r-lines" id="o-lines"></div>
+      <div class="r-suggest hidden" id="o-suggest"></div>
+      <div class="r-actions">
+        <button id="o-home" class="secondary">처음으로</button>
+        <button id="o-rank" class="secondary">랭킹</button>
+        <button id="o-again" class="primary">한 번 더</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 상점 ===== -->
+  <div class="modal hidden" id="shop-modal" role="dialog" aria-modal="true" aria-labelledby="h-shop">
+    <div class="sheet">
+      <div class="sheet-head"><h2 id="h-shop">상점</h2><button class="plain" data-close>닫기</button></div>
+      <p class="view-sub">스테이지·오늘의 퍼즐·타임어택에서 코인을 모아요.</p>
+      <div class="shop-coins"><svg aria-hidden="true"><use href="#i-coin"/></svg><b id="shop-coins">0</b> 코인</div>
+      <div class="seg" id="shop-seg" role="tablist" aria-label="상점 종류">
+        <button data-tab="items" class="active" role="tab">아이템</button>
+        <button data-tab="skins" role="tab">건전지 꾸미기</button>
+      </div>
+      <div id="shop-list" class="shop-list"></div>
+      <div id="skin-list" class="skin-list hidden"></div>
+    </div>
+  </div>
+
+  <!-- ===== 하는 방법 ===== -->
+  <div class="modal hidden" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="h-help">
+    <div class="sheet wide">
+      <div class="sheet-head"><h2 id="h-help">하는 방법</h2><button class="plain" data-close>알겠어요</button></div>
+      <ol class="help-steps">
+        <li>
+          <div class="hs-art" id="hs-1"></div>
+          <div><b>1. 직렬로 이으면 더해져요</b><p>건전지를 고르고 빈 칸을 눌러 놓아요. 한 줄에 놓은 건전지 전압이 모두 더해져요. 목표 전압과 똑같이 맞추면 전구가 켜져요.</p></div>
+        </li>
+        <li>
+          <div class="hs-art" id="hs-2"></div>
+          <div><b>2. 뒤집으면 빼져요</b><p>놓은 건전지를 한 번 누르면 방향이 뒤집혀서(−) 그만큼 전압이 빠져요. 9V에서 1.5V를 빼면 7.5V!</p></div>
+        </li>
+        <li>
+          <div class="hs-art" id="hs-3"></div>
+          <div><b>3. 병렬은 줄마다 전압이 같아야 해요</b><p>큰 전구는 줄이 여러 개 필요해요. 줄마다 전압이 다르면 전기가 거꾸로 흘러서 켜지지 않아요.</p></div>
+        </li>
+        <li>
+          <div class="hs-art bolt" aria-hidden="true"><svg><use href="#i-bolt"/></svg></div>
+          <div><b>4. 누전 칸과 아이템</b><p>번개 칸은 망가져서 못 써요. <b>전압계</b>는 다음 수를 알려 주고, <b>누전 차단기</b>는 번개 칸을 고치고, <b>충전기</b>는 타임어택 전력을 15초 채워요.</p></div>
+        </li>
+        <li>
+          <div class="hs-art" id="hs-5"></div>
+          <div><b>5. 고정 건전지와 한쪽 방향 칸</b><p>자물쇠 건전지는 처음부터 박혀 있어서 빼거나 뒤집을 수 없어요. 칸에 <b>＋</b>가 쓰여 있으면 바로, <b>−</b>가 쓰여 있으면 뒤집혀서만 놓여요. (7장부터)</p></div>
+        </li>
+        <li>
+          <div class="hs-art stars" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></div>
+          <div><b>6. 적게 쓸수록 별이 많아요</b><p>가장 적은 건전지로 풀면 별 3개. 타임어택은 전력이 계속 닳으니 빨리 풀어야 해요. 한 문제 풀 때마다 전력이 조금 채워져요 (레벨이 오를수록 적게).</p></div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ===== 설정 ===== -->
+  <div class="modal hidden" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="h-settings">
+    <div class="sheet">
+      <div class="sheet-head"><h2 id="h-settings">설정</h2><button class="plain" data-close>완료</button></div>
+      <div class="group">
+        <label class="row"><span class="grow">효과음</span><input type="checkbox" class="switch" id="set-sound" role="switch" /></label>
+        <label class="row"><span class="grow">진동 (폰)</span><input type="checkbox" class="switch" id="set-vibrate" role="switch" /></label>
+        <label class="row"><span class="grow">움직임 줄이기</span><input type="checkbox" class="switch" id="set-calm" role="switch" /></label>
+        <div class="row"><span class="grow">화면</span>
+          <div class="seg small" id="set-theme"><button data-theme="dark">어둡게</button><button data-theme="light">밝게</button></div>
+        </div>
+      </div>
+      <p class="view-sub" style="margin-top:12px">키보드: 1~4 건전지 고르기 · Esc 고른 것 취소</p>
+      <button id="btn-logout" class="secondary danger hidden" style="width:100%;margin-top:8px">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- ===== 로그인 ===== -->
+  <div class="modal hidden" id="auth-modal" role="dialog" aria-modal="true" aria-label="로그인">
+    <div class="sheet">
+      <div class="sheet-head"><span></span><button class="plain" data-close>닫기</button></div>
+      <p class="auth-why" id="auth-why"></p>
+      <form id="login-form" class="form">
+        <h2>로그인</h2>
+        <input name="username" placeholder="아이디" autocomplete="username" aria-label="아이디" />
+        <input name="password" type="password" placeholder="비밀번호" autocomplete="current-password" aria-label="비밀번호" />
+        <p class="err" id="login-err"></p>
+        <button type="submit" class="primary">로그인</button>
+        <p class="switch-auth">처음이에요? <a href="#" id="to-signup">회원가입</a></p>
+      </form>
+      <form id="signup-form" class="form hidden">
+        <h2>회원가입</h2>
+        <input name="username" placeholder="아이디 (영문·숫자 4~20자)" autocomplete="username" aria-label="아이디" />
+        <input name="password" type="password" placeholder="비밀번호 (8~64자)" autocomplete="new-password" aria-label="비밀번호" />
+        <input name="nickname" placeholder="닉네임 (랭킹에 보여요, 1~12자)" aria-label="닉네임" />
+        <p class="err" id="signup-err"></p>
+        <button type="submit" class="primary">가입하고 시작</button>
+        <p class="switch-auth">계정이 있어요? <a href="#" id="to-login">로그인</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== 오늘의 행운 상자 ===== -->
+  <div class="modal box-modal hidden" id="box-modal" role="dialog" aria-modal="true" aria-labelledby="bx-title">
+    <div class="bx-stage">
+      <div class="bx-rays" aria-hidden="true"></div>
+      <div class="bx-wrap" id="bx-wrap">
+        <svg class="bx-box" viewBox="0 0 120 120" aria-hidden="true">
+          <rect class="bx-body" x="14" y="52" width="92" height="58" rx="8"/>
+          <rect class="bx-ribbon" x="52" y="52" width="16" height="58"/>
+          <g class="bx-lid"><rect class="bx-lidtop" x="8" y="36" width="104" height="22" rx="6"/><rect class="bx-ribbon" x="52" y="36" width="16" height="22"/>
+            <path class="bx-bow" d="M60 36c-10-16-30-14-26-2 3 7 18 4 26 2zm0 0c10-16 30-14 26-2-3 7-18 4-26 2z"/></g>
+        </svg>
+      </div>
+      <div class="bx-reveal hidden" id="bx-reveal">
+        <div class="bx-tier" id="bx-tier">희귀</div>
+        <div class="bx-items" id="bx-items"></div>
+        <div class="bx-sub" id="bx-sub"></div>
+      </div>
+      <h2 id="bx-title" class="bx-title">오늘의 행운 상자</h2>
+      <p class="bx-hint" id="bx-hint">상자를 눌러서 열어요!</p>
+      <button class="primary hidden" id="bx-close">좋아요!</button>
+    </div>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="fx" aria-hidden="true"></div>
+
+  <script src="{{ url_for('static', filename='index.js') }}"></script>
+</body>
+</html>

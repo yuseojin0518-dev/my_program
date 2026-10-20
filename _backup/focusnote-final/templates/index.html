@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" id="theme-color" content="#ECEAE4" />
+  <script>
+    // 화면이 그려지기 전에 고른 테마를 먼저 붙인다 (깜빡임 방지)
+    (function () {
+      var t = localStorage.getItem("focusnote.theme") || "auto";
+      var dark = t === "dark" || (t === "auto" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <title id="page-title">집중노트</title>
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}" />
+</head>
+<body>
+  <!-- 직접 그린 아이콘 (한 번 정의하고 여러 곳에서 씀) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8.5" cy="14.5" r="1.3" fill="currentColor"/><circle cx="12" cy="14.5" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V12M12 20V5M19 20v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-tools" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></symbol>
+  </svg>
+
+  <header id="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>집중노트</div>
+    <!-- 탭: PC에서는 위 가운데, 폰에서는 화면 아래 탭 막대가 된다 -->
+    <nav class="tabs" role="tablist" aria-label="화면 바꾸기">
+      <button class="tab active" data-tab="timer" role="tab" aria-selected="true">
+        <svg class="tab-icon" aria-hidden="true"><use href="#i-timer"/></svg><span>타이머</span>
+      </button>
+      <button class="tab" data-tab="planner" role="tab" aria-selected="false">
+        <svg class="tab-icon" aria-hidden="true"><use href="#i-cal"/></svg><span>플래너</span>
+      </button>
+      <button class="tab" data-tab="stats" role="tab" aria-selected="false">
+        <svg class="tab-icon" aria-hidden="true"><use href="#i-chart"/></svg><span>기록</span>
+      </button>
+      <button class="tab" data-tab="tools" role="tab" aria-selected="false">
+        <svg class="tab-icon" aria-hidden="true"><use href="#i-tools"/></svg><span>도구</span>
+      </button>
+    </nav>
+    <div class="account">
+      <button id="theme-btn" class="icon-btn theme-btn" aria-label="화면 밝기 설정" title="화면 밝기"><svg aria-hidden="true"><use href="#i-theme"/></svg></button>
+      <span id="user-box" class="hidden"><b id="nickname"></b></span>
+      <button id="login-btn" class="plain">로그인</button>
+      <button id="logout-btn" class="plain hidden">로그아웃</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ===== 타이머 탭 ===== -->
+    <section class="panel active" id="panel-timer" aria-labelledby="t-timer">
+      <h1 class="large-title" id="t-timer">타이머</h1>
+
+      <!-- D-day (로그인했을 때) -->
+      <div class="dday-row hidden" id="dday-row">
+        <div class="dday-list" id="dday-list"></div>
+        <button id="dday-edit" class="dday-add" title="D-day 관리">+ D-day</button>
+      </div>
+      <!-- 로그인 안 했을 때 안내 -->
+      <div id="guest-banner" class="banner hidden">
+        <span>지금은 타이머만 쓸 수 있어요. 로그인하면 공부 시간이 기록돼요.</span>
+        <button id="banner-login" class="filled small">로그인</button>
+      </div>
+      <!-- 오늘 복습할 것 · 오늘 수업 (로그인했을 때, 있을 때만) -->
+      <div class="review-strip hidden" id="review-strip"></div>
+      <!-- 오늘 공부량 (누르면 기록 탭) -->
+      <button id="today-strip" class="today-strip hidden" title="기록 탭에서 자세히 보기">
+        <span class="today-text">오늘 <b id="today-min">0분</b> <span class="muted-inline">/ 목표 <span id="today-goal">120분</span></span>
+          <span class="today-plans" id="today-plans"></span></span>
+        <span class="bar"><span class="bar-fill" id="today-fill"></span></span>
+      </button>
+
+      <div class="setup" id="setup">
+        <div class="seg kind-seg" id="kind-seg" role="group" aria-label="재는 방법">
+          <button data-kind="pomo" class="active">정해진 시간</button>
+          <button data-kind="watch">스톱워치 (자유롭게)</button>
+        </div>
+        <div class="seg modes" id="modes" role="group" aria-label="모드">
+          <button class="mode active" data-mode="focus">집중</button>
+          <button class="mode" data-mode="short">짧은 휴식</button>
+          <button class="mode" data-mode="long">긴 휴식</button>
+        </div>
+        <div class="focus-lengths" id="focus-lengths" role="group" aria-label="집중 길이">
+          <button class="len" data-min="15">15분</button>
+          <button class="len active" data-min="25">25분</button>
+          <button class="len" data-min="50">50분</button>
+        </div>
+      </div>
+
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 220 220" aria-hidden="true">
+          <circle class="ring-bg" cx="110" cy="110" r="96" />
+          <circle class="ring-fg" id="ring-fg" cx="110" cy="110" r="96" />
+        </svg>
+        <div class="ring-center">
+          <div class="ring-subject" id="ring-subject"></div>
+          <div class="ring-plan hidden" id="ring-plan"></div>
+          <div class="time" id="time" aria-live="off">25:00</div>
+          <div class="ring-label" id="ring-label">집중</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="reset-btn" class="tinted hidden">처음으로</button>
+        <button id="start-btn" class="filled big">집중 시작</button>
+        <button id="save-now-btn" class="tinted hidden">여기까지 저장</button>
+        <button id="skip-btn" class="tinted hidden">휴식 건너뛰기</button>
+      </div>
+      <p class="note" id="timer-note" aria-live="polite"></p>
+
+      <!-- 무엇을 공부하나요 (묶음 목록) -->
+      <h2 class="group-header">무엇을 공부하나요</h2>
+      <div class="group study-fields" id="study-fields">
+        <div class="row linked-plan hidden" id="linked-plan">
+          <span class="lp-text">할 일 <b id="linked-plan-title"></b> 하는 중</span>
+          <button id="unlink-plan" class="plain small">연결 끊기</button>
+        </div>
+        <div class="row field column">
+          <div class="field-head">
+            <span class="field-label">과목</span>
+            <button id="manage-subjects" class="plain small">편집</button>
+          </div>
+          <div class="subject-chips" id="subject-chips"></div>
+        </div>
+        <div class="row field">
+          <label for="memo" class="field-label inline">메모</label>
+          <input id="memo" class="row-input" maxlength="100" placeholder="선택 · 예: 수학 2단원 문제풀이" />
+        </div>
+      </div>
+
+      <!-- 집중 도구 -->
+      <h2 class="group-header">집중 도구</h2>
+      <div class="group tools" role="group" aria-label="집중 도구">
+        <button id="focus-view-btn" class="row row-button" title="시계만 크게 보기 (F)">
+          <span class="row-icon blue" aria-hidden="true"><svg><use href="#i-expand"/></svg></span>
+          <span class="grow">크게 보기</span>
+          <span class="row-hint">F</span>
+          <svg class="chev" aria-hidden="true"><use href="#i-right"/></svg>
+        </button>
+        <div class="row sound-group column">
+          <div class="sound-head">
+            <span class="row-icon orange" aria-hidden="true"><svg><use href="#i-sound"/></svg></span>
+            <span class="grow tool-label">배경 소리</span>
+            <input type="range" id="sound-vol" min="0" max="100" value="40" aria-label="배경 소리 크기" />
+          </div>
+          <div class="seg" id="sound-seg" role="group" aria-label="배경 소리 종류">
+            <button data-sound="off" class="active">끔</button>
+            <button data-sound="white">백색소음</button>
+            <button data-sound="rain">빗소리</button>
+            <button data-sound="cafe">웅성웅성</button>
+          </div>
+        </div>
+        <label class="row switch-row">
+          <span class="grow">끝나면 다음 단계 자동 시작</span>
+          <input type="checkbox" id="auto-next" class="toggle-switch" role="switch" />
+        </label>
+      </div>
+      <p class="group-footer"><span class="shortcut-hint">스페이스바로 시작·일시정지할 수 있어요.</span></p>
+
+      <button id="manual-btn" class="plain">타이머 없이 공부했나요? 직접 기록하기</button>
+    </section>
+
+    <!-- ===== 플래너 탭 ===== -->
+    <section class="panel" id="panel-planner" aria-labelledby="t-planner">
+      <div class="title-row">
+        <h1 class="large-title" id="t-planner">플래너</h1>
+        <div class="seg view-seg" id="plan-view-seg" role="group" aria-label="보기 방식">
+          <button data-view="week" class="active">주</button>
+          <button data-view="month">달력</button>
+        </div>
+      </div>
+
+      <div id="planner-guest" class="empty hidden">
+        로그인하면 날짜별로 공부 계획을 세울 수 있어요.
+        <button id="planner-login" class="filled">로그인</button>
+      </div>
+
+      <div id="planner-body">
+        <!-- 주 보기 -->
+        <div class="day-nav" id="week-view">
+          <button id="day-prev" class="icon-btn" aria-label="이전 주"><svg><use href="#i-left"/></svg></button>
+          <div class="day-strip" id="day-strip"></div>
+          <button id="day-next" class="icon-btn" aria-label="다음 주"><svg><use href="#i-right"/></svg></button>
+        </div>
+
+        <!-- 달력 보기 -->
+        <div class="calendar hidden" id="month-view">
+          <div class="cal-head">
+            <h2 class="cal-title" id="cal-title" aria-live="polite">2026년 10월</h2>
+            <div class="cal-nav">
+              <button id="cal-today" class="plain small">오늘</button>
+              <button id="cal-prev" class="icon-btn" aria-label="이전 달"><svg><use href="#i-left"/></svg></button>
+              <button id="cal-next" class="icon-btn" aria-label="다음 달"><svg><use href="#i-right"/></svg></button>
+            </div>
+          </div>
+          <div class="cal-week" aria-hidden="true">
+            <span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span>
+          </div>
+          <div class="cal-grid" id="cal-grid" role="grid" aria-label="월 달력"></div>
+          <div class="cal-legend" aria-hidden="true">
+            <span><i class="dot-all"></i>다 끝냄</span>
+            <span><i class="dot-some"></i>할 일 남음</span>
+            <span><i class="dot-dday"></i>D-day</span>
+          </div>
+        </div>
+
+        <div class="plan-head">
+          <div>
+            <h2 class="plan-date" id="plan-date">오늘</h2>
+            <div class="plan-summary" id="plan-summary"></div>
+          </div>
+          <button id="day-today" class="plain small hidden">오늘로</button>
+        </div>
+        <div class="plan-progress"><div class="bar"><div class="bar-fill" id="plan-fill"></div></div></div>
+
+        <div id="carry-box" class="banner hidden">
+          <span id="carry-text"></span>
+          <button id="carry-btn" class="filled small">오늘로 가져오기</button>
+        </div>
+
+        <form id="plan-form" class="group plan-form" autocomplete="off">
+          <div class="row">
+            <input id="plan-title" class="row-input" maxlength="60" placeholder="할 일을 적고 Enter (예: 수학 문제집 3단원)" aria-label="새 할 일" />
+          </div>
+          <div class="row plan-form-row">
+            <div class="subject-chips small" id="plan-chips"></div>
+            <div class="plan-target">
+              <label for="plan-target">목표</label>
+              <select id="plan-target">
+                <option value="0">시간 없음</option>
+                <option value="25">25분</option>
+                <option value="50">50분</option>
+                <option value="60">1시간</option>
+                <option value="90">1시간 30분</option>
+                <option value="120">2시간</option>
+              </select>
+            </div>
+            <button type="submit" class="filled small">추가</button>
+          </div>
+        </form>
+        <p class="err" id="plan-err"></p>
+
+        <ul id="plan-list" class="group plan-list"></ul>
+      </div>
+    </section>
+
+    <!-- ===== 기록 탭 ===== -->
+    <section class="panel" id="panel-stats" aria-labelledby="t-stats">
+      <h1 class="large-title" id="t-stats">기록</h1>
+      <div id="stats-guest" class="empty hidden">
+        로그인하면 공부 기록과 통계를 볼 수 있어요.
+        <button id="stats-login" class="filled">로그인</button>
+      </div>
+
+      <div id="stats-body">
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">오늘</div>
+            <div class="card-value" id="stat-today">0분</div>
+            <div class="bar"><div class="bar-fill" id="goal-fill"></div></div>
+            <div class="card-sub"><span id="goal-text">목표 120분</span>
+              <button id="goal-edit" class="plain small">바꾸기</button></div>
+          </div>
+          <div class="card">
+            <div class="card-label">연속 공부</div>
+            <div class="card-value" id="stat-streak">0일</div>
+            <div class="card-sub">하루라도 빠지면 다시 1일부터</div>
+          </div>
+          <div class="card">
+            <div class="card-label">최근 7일</div>
+            <div class="card-value" id="stat-week">0분</div>
+            <div class="card-sub"><span class="week-diff" id="stat-week-diff"></span>전체 <span id="stat-total">0분</span></div>
+          </div>
+        </div>
+
+        <h2 class="group-header">최근 7일</h2>
+        <div class="week-chart" id="week-chart"></div>
+
+        <h2 class="group-header">공부 잔디 <span class="muted-inline" id="heat-summary"></span></h2>
+        <div class="heat-wrap">
+          <div class="heat-days" aria-hidden="true"><span>월</span><span></span><span>수</span><span></span><span>금</span><span></span><span>일</span></div>
+          <div class="heat" id="heat" role="img" aria-label="최근 12주 공부 기록"></div>
+        </div>
+        <div class="heat-legend" aria-hidden="true">
+          적게 <i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> 많이
+        </div>
+
+        <h2 class="group-header">언제 공부했나요 (최근 30일) <span class="muted-inline" id="hour-summary"></span></h2>
+        <div class="hour-chart" id="hour-chart" role="img" aria-label="시간대별 공부량"></div>
+        <div class="hour-axis" aria-hidden="true"><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>24시</span></div>
+
+        <h2 class="group-header">과목별 (최근 7일)</h2>
+        <div id="subject-bars" class="group subject-bars"></div>
+
+        <div class="section-row">
+          <h2 class="group-header">최근 기록</h2>
+          <a id="export-btn" class="plain small export-link" href="/export.csv" download>엑셀로 받기</a>
+        </div>
+        <ul id="session-list" class="group session-list"></ul>
+      </div>
+    </section>
+
+    <!-- ===== 도구 탭 ===== -->
+    <section class="panel" id="panel-tools" aria-labelledby="t-tools">
+      <h1 class="large-title" id="t-tools">도구</h1>
+      <div id="tools-guest" class="empty hidden">
+        로그인하면 시간표·단어장·오답노트를 쓸 수 있어요.
+        <button id="tools-login" class="filled">로그인</button>
+      </div>
+
+      <div id="tools-body">
+        <div class="seg tool-seg" id="tool-seg" role="group" aria-label="도구 고르기">
+          <button data-tool="timetable" class="active">시간표</button>
+          <button data-tool="cards">단어장</button>
+          <button data-tool="wrongs">오답노트</button>
+        </div>
+
+        <!-- 시간표 -->
+        <div class="tool-pane active" id="pane-timetable">
+          <div class="tt-wrap"><table class="tt" id="tt" aria-label="주간 시간표"></table></div>
+          <div class="tt-foot">
+            <span>칸을 눌러 과목을 적어요. 비우면 지워져요.</span>
+            <span>
+              <button id="tt-less" class="plain small" aria-label="교시 줄이기">− 교시</button>
+              <button id="tt-more" class="plain small" aria-label="교시 늘리기">+ 교시</button>
+            </span>
+          </div>
+          <div class="tt-quick" id="tt-quick"></div>
+        </div>
+
+        <!-- 단어장 -->
+        <div class="tool-pane" id="pane-cards">
+          <div id="deck-home">
+            <ul class="group deck-list" id="deck-list"></ul>
+            <form class="inline-add" id="deck-form" autocomplete="off">
+              <input id="deck-name" maxlength="20" placeholder="새 단어장 이름 (예: 영단어 3과)" aria-label="새 단어장 이름" />
+              <button type="submit" class="filled small">만들기</button>
+            </form>
+            <p class="err" id="deck-err"></p>
+            <p class="group-footer">외웠으면 점점 늦게(1→2→4→7→14일 뒤), 모르면 내일 다시 나와요.</p>
+          </div>
+
+          <div id="deck-detail" class="hidden">
+            <div class="back-row">
+              <button id="deck-back" class="plain"><svg class="chev" style="transform:rotate(180deg);color:var(--tint)" aria-hidden="true"><use href="#i-right"/></svg>단어장</button>
+            </div>
+            <div class="title-row">
+              <h2 class="plan-date" id="deck-title"></h2>
+              <button id="deck-delete" class="plain small" style="color:var(--red)">단어장 삭제</button>
+            </div>
+            <div class="plan-summary" id="deck-summary"></div>
+            <div class="controls" style="margin:14px 0 4px">
+              <button id="study-due" class="filled">오늘 외우기</button>
+              <button id="study-all" class="tinted">전부 외우기</button>
+            </div>
+
+            <h2 class="group-header">카드 추가</h2>
+            <form class="group card-editor" id="card-form">
+              <div class="row column">
+                <textarea id="card-lines" placeholder="한 줄에 하나씩: 앞면 - 뒷면&#10;apple - 사과&#10;photosynthesis - 광합성" aria-label="카드 여러 장 입력"></textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                  <span class="card-hint">구분: <b>-</b> 또는 <b>:</b> 또는 <b>=</b> (엑셀에서 복사해 붙여도 돼요)</span>
+                  <button type="submit" class="filled small">추가</button>
+                </div>
+              </div>
+            </form>
+            <p class="err" id="card-err"></p>
+
+            <h2 class="group-header">카드 <span id="card-count"></span></h2>
+            <ul class="group card-list" id="card-list"></ul>
+          </div>
+        </div>
+
+        <!-- 오답노트 -->
+        <div class="tool-pane" id="pane-wrongs">
+          <div class="wrong-filter">
+            <div class="seg" id="wrong-seg" role="group" aria-label="보기">
+              <button data-show="due" class="active">오늘 볼 것</button>
+              <button data-show="open">안 푼 것</button>
+              <button data-show="solved">해결</button>
+            </div>
+            <select id="wrong-subject" aria-label="과목으로 거르기"><option value="">모든 과목</option></select>
+          </div>
+          <div class="controls" style="justify-content:flex-start;margin-bottom:12px">
+            <button id="wrong-add" class="filled small">+ 오답 적기</button>
+          </div>
+          <ul class="group wrong-list" id="wrong-list"></ul>
+          <p class="group-footer">다시 풀어서 맞히면 3일 → 7일 뒤에 또 나오고, 3번 맞히면 '해결'로 가요.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 과목 관리 -->
+  <div id="subject-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="h-subject">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="h-subject">과목 편집</h2>
+        <button class="close plain" data-close>완료</button>
+      </div>
+      <ul id="subject-list" class="group subject-list"></ul>
+      <form id="subject-form" class="inline-form">
+        <input id="new-subject" maxlength="20" placeholder="새 과목 이름" aria-label="새 과목 이름" />
+        <div class="swatches" id="swatches" role="group" aria-label="색 고르기"></div>
+        <button type="submit" class="filled">추가</button>
+      </form>
+      <p class="err" id="subject-err"></p>
+    </div>
+  </div>
+
+  <!-- 직접 입력 -->
+  <div id="manual-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="h-manual">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="h-manual">직접 기록하기</h2>
+        <button class="close plain" data-close>취소</button>
+      </div>
+      <form id="manual-form" class="auth-form">
+        <span class="field-label">과목</span>
+        <div class="subject-chips" id="manual-chips"></div>
+        <label for="manual-minutes" class="field-label">공부한 시간</label>
+        <div class="quick" id="manual-quick">
+          <button type="button" data-min="15">15분</button>
+          <button type="button" data-min="30">30분</button>
+          <button type="button" data-min="60">1시간</button>
+          <button type="button" data-min="90">1시간 30분</button>
+          <button type="button" data-min="120">2시간</button>
+        </div>
+        <div class="num-row"><input id="manual-minutes" type="number" min="1" max="300" value="30" /><span>분</span></div>
+        <label for="manual-memo" class="field-label">메모 <span class="opt">(선택)</span></label>
+        <input id="manual-memo" maxlength="100" />
+        <p class="err" id="manual-err"></p>
+        <button type="submit" class="filled">기록하기</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 하루 목표 -->
+  <div id="goal-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="h-goal">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="h-goal">하루 목표</h2>
+        <button class="close plain" data-close>취소</button>
+      </div>
+      <form id="goal-form" class="auth-form">
+        <div class="quick" id="goal-quick">
+          <button type="button" data-min="60">1시간</button>
+          <button type="button" data-min="120">2시간</button>
+          <button type="button" data-min="180">3시간</button>
+          <button type="button" data-min="240">4시간</button>
+          <button type="button" data-min="360">6시간</button>
+        </div>
+        <div class="num-row"><input id="goal-minutes" type="number" min="10" max="720" aria-label="하루 목표(분)" /><span>분</span></div>
+        <p class="err" id="goal-err"></p>
+        <button type="submit" class="filled">저장</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 로그인 / 회원가입 -->
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="로그인">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <span></span>
+        <button class="close plain" data-close>취소</button>
+      </div>
+      <form id="login-form" class="auth-form">
+        <h2>로그인</h2>
+        <input name="username" placeholder="아이디" autocomplete="username" aria-label="아이디" />
+        <input name="password" type="password" placeholder="비밀번호" autocomplete="current-password" aria-label="비밀번호" />
+        <p class="err" id="login-err"></p>
+        <button type="submit" class="filled">로그인</button>
+        <p class="switch">계정이 없나요? <a href="#" id="to-signup">회원가입</a></p>
+      </form>
+      <form id="signup-form" class="auth-form hidden">
+        <h2>회원가입</h2>
+        <input name="username" placeholder="아이디 (영문·숫자 4~20자)" autocomplete="username" aria-label="아이디" />
+        <input name="password" type="password" placeholder="비밀번호 (8~64자)" autocomplete="new-password" aria-label="비밀번호" />
+        <input name="nickname" placeholder="닉네임 (1~12자)" aria-label="닉네임" />
+        <p class="err" id="signup-err"></p>
+        <button type="submit" class="filled">가입하고 시작</button>
+        <p class="switch">이미 계정이 있나요? <a href="#" id="to-login">로그인</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- D-day 관리 -->
+  <div id="dday-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="h-dday">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="h-dday">D-day</h2>
+        <button class="close plain" data-close>완료</button>
+      </div>
+      <ul id="dday-manage" class="group subject-list"></ul>
+      <form id="dday-form" class="inline-form" autocomplete="off">
+        <input id="dday-title" maxlength="20" placeholder="이름 (예: 중간고사)" aria-label="D-day 이름" />
+        <input id="dday-date" type="date" aria-label="날짜" />
+        <button type="submit" class="filled">추가</button>
+      </form>
+      <p class="err" id="dday-err"></p>
+    </div>
+  </div>
+
+  <!-- 화면 밝기 -->
+  <div id="theme-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="h-theme">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="h-theme">화면 밝기</h2>
+        <button class="close plain" data-close>완료</button>
+      </div>
+      <div class="theme-opts" id="theme-opts" role="radiogroup" aria-label="화면 밝기">
+        <button class="theme-opt" data-theme-opt="auto" role="radio"><span class="theme-sw auto"></span>기기 따라</button>
+        <button class="theme-opt" data-theme-opt="light" role="radio"><span class="theme-sw light"></span>밝게</button>
+        <button class="theme-opt" data-theme-opt="dark" role="radio"><span class="theme-sw dark"></span>어둡게</button>
+      </div>
+      <p class="group-footer" style="margin-top:12px">둘 다 눈이 덜 피곤한 부드러운 색이에요.</p>
+    </div>
+  </div>
+
+  <!-- 오답 적기 / 고치기 -->
+  <div id="wrong-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="h-wrong">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="h-wrong">오답 적기</h2>
+        <button class="close plain" data-close>취소</button>
+      </div>
+      <form id="wrong-form" class="auth-form wrong-form" autocomplete="off">
+        <span class="field-label">과목</span>
+        <div class="subject-chips" id="wrong-chips"></div>
+        <label for="wrong-source" class="field-label">출처 <span class="opt">(선택)</span></label>
+        <input id="wrong-source" maxlength="60" placeholder="예: 수학 익힘책 p.32 / 3월 모의고사 17번" />
+        <label for="wrong-question" class="field-label">문제</label>
+        <textarea id="wrong-question" maxlength="500" placeholder="틀린 문제를 적어요"></textarea>
+        <label for="wrong-reason" class="field-label">왜 틀렸나요 <span class="opt">(선택)</span></label>
+        <div class="quick" id="wrong-reasons">
+          <button type="button">계산 실수</button>
+          <button type="button">개념 몰랐음</button>
+          <button type="button">문제 잘못 읽음</button>
+          <button type="button">시간 부족</button>
+          <button type="button">헷갈림</button>
+        </div>
+        <input id="wrong-reason" maxlength="300" placeholder="직접 적어도 돼요" />
+        <label for="wrong-answer" class="field-label">정답·풀이 <span class="opt">(선택)</span></label>
+        <textarea id="wrong-answer" maxlength="500" placeholder="정답이나 올바른 풀이"></textarea>
+        <p class="err" id="wrong-err"></p>
+        <button type="submit" class="filled" id="wrong-submit">저장</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 암기 화면 (카드 뒤집기) -->
+  <div id="study-view" class="study-view hidden" role="dialog" aria-modal="true" aria-label="단어 외우기">
+    <div class="sv-top">
+      <button id="sv-close" class="plain">닫기</button>
+      <span class="sv-title" id="sv-title"></span>
+      <span class="sv-count" id="sv-count"></span>
+    </div>
+    <div class="sv-bar bar"><div class="bar-fill" id="sv-fill"></div></div>
+    <div id="sv-card-area" style="display:contents">
+      <div class="flash" id="flash" tabindex="0" role="button" aria-label="눌러서 뜻 보기">
+        <div class="flash-front" id="flash-front"></div>
+        <div class="flash-back hidden" id="flash-back"></div>
+        <div class="flash-hint" id="flash-hint">눌러서 뜻 보기</div>
+      </div>
+      <div class="sv-actions">
+        <button class="sv-show" id="sv-show">뜻 보기</button>
+        <button class="sv-no hidden" id="sv-no">몰라요</button>
+        <button class="sv-yes hidden" id="sv-yes">알아요</button>
+      </div>
+      <div class="sv-keys">스페이스바: 뒤집기 · ←: 몰라요 · →: 알아요</div>
+    </div>
+    <div class="sv-done hidden" id="sv-done">
+      <div class="big-num" id="sv-done-num"></div>
+      <div id="sv-done-text"></div>
+      <button id="sv-done-close" class="filled">끝내기</button>
+    </div>
+  </div>
+
+  <!-- 집중 화면: 시계만 크게 -->
+  <div id="focus-view" class="focus-view hidden" role="dialog" aria-modal="true" aria-label="집중 화면">
+    <div class="fv-top">
+      <span class="fv-what" id="fv-what"></span>
+      <button id="fv-close" class="fv-btn" aria-label="집중 화면 닫기"><svg aria-hidden="true"><use href="#i-close"/></svg>닫기</button>
+    </div>
+    <div class="fv-time" id="fv-time">25:00</div>
+    <div class="fv-label" id="fv-label"></div>
+    <div class="fv-bar"><div class="fv-fill" id="fv-fill"></div></div>
+    <div class="fv-controls">
+      <button id="fv-toggle" class="fv-main">일시정지</button>
+    </div>
+    <div class="fv-hint">스페이스바: 시작·일시정지 · Esc: 닫기</div>
+  </div>
+
+  <div id="toast" role="status"></div>
+
+  <script src="{{ url_for('static', filename='index.js') }}"></script>
+</body>
+</html>

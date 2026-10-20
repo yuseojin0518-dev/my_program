@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>세특메이트 — AI 입시 탐구 & 마인드맵 빌더</title>
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}" />
+</head>
+<body>
+  <!-- 상단바 -->
+  <header id="topbar">
+    <div class="brand" id="brand">세특메이트</div>
+    <span id="mode-badge" class="badge"></span>
+    <div class="spacer"></div>
+    <button id="saved-btn" class="ghost hidden">저장함</button>
+    <span id="user-box" class="hidden"><b id="nickname"></b></span>
+    <button id="login-btn">로그인</button>
+    <button id="logout-btn" class="hidden">로그아웃</button>
+  </header>
+
+  <!-- 진행바 (stepper) -->
+  <nav id="stepper">
+    <div class="step active" data-step="1"><span class="num">1</span> 진로·학과</div>
+    <div class="step" data-step="2"><span class="num">2</span> 교과·키워드</div>
+    <div class="step" data-step="3"><span class="num">3</span> AI 탐구 설계</div>
+    <div class="step" data-step="4"><span class="num">4</span> 마인드맵·내보내기</div>
+  </nav>
+
+  <main id="main">
+    <!-- ===== Step 1 ===== -->
+    <section class="screen active" id="screen-1">
+      <h1>어떤 미래를 꿈꾸고 있나요?</h1>
+      <p class="sub">진로와 학과를 알려주면 꼭 맞는 탐구 주제를 설계해 드려요.</p>
+
+      <h3 class="label">1. 대계열을 골라요</h3>
+      <div id="track-cards" class="track-cards"></div>
+
+      <h3 class="label">2. 희망 학과와 직업을 적어요</h3>
+      <div class="input-row">
+        <input id="major" placeholder="예: 컴퓨터공학과" />
+        <input id="job" placeholder="예: 인공지능 개발자 (선택)" />
+      </div>
+
+      <h3 class="label">3. 관심 교과목을 골라요 (여러 개 가능)</h3>
+      <div id="subject-chips" class="chips"></div>
+
+      <div class="actions-bar">
+        <span class="spacer"></span>
+        <button class="primary" id="to-step2">다음 →</button>
+      </div>
+    </section>
+
+    <!-- ===== Step 2 ===== -->
+    <section class="screen" id="screen-2">
+      <h1>집중하고 싶은 키워드가 있나요?</h1>
+      <p class="sub">고른 교과목의 핵심 개념을 추천해 드려요. 직접 추가해도 좋아요.</p>
+
+      <h3 class="label">교과서 핵심 개념 (눌러서 선택)</h3>
+      <div id="keyword-chips" class="chips"></div>
+
+      <h3 class="label">직접 키워드 추가</h3>
+      <div class="input-row">
+        <input id="custom-keyword" placeholder="예: 인공지능 윤리, 유전자 가위" />
+        <button id="add-keyword">추가</button>
+      </div>
+      <div id="selected-keywords" class="chips selected-box"></div>
+
+      <h3 class="label">탐구 성향을 골라요</h3>
+      <div id="style-cards" class="style-cards">
+        <div class="style-card active" data-style="academic"><b>심화 학술형</b><span>이론·원리를 깊이 파고드는 탐구</span></div>
+        <div class="style-card" data-style="social"><b>사회 기여형</b><span>현실 문제 해결과 사회적 의미</span></div>
+        <div class="style-card" data-style="project"><b>실험·프로젝트형</b><span>직접 해보고 데이터로 분석</span></div>
+      </div>
+
+      <div class="actions-bar">
+        <button class="ghost" id="back-step1">← 이전</button>
+        <span class="spacer"></span>
+        <button class="primary" id="to-step3">AI로 탐구 설계하기</button>
+      </div>
+    </section>
+
+    <!-- ===== Step 3 ===== -->
+    <section class="screen" id="screen-3">
+      <h1>설계된 탐구를 확인해 보세요</h1>
+      <p class="sub" id="step3-sub">입력하신 내용을 바탕으로 정리했어요.</p>
+
+      <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        <p>탐구를 설계하고 있어요…</p>
+      </div>
+
+      <div id="result-cards" class="result-cards"></div>
+
+      <div class="actions-bar">
+        <button class="ghost" id="back-step2">← 이전</button>
+        <button class="ghost" id="regenerate">다시 생성</button>
+        <span class="spacer"></span>
+        <button class="primary" id="to-step4">마인드맵 보기 →</button>
+      </div>
+    </section>
+
+    <!-- ===== Step 4 ===== -->
+    <section class="screen" id="screen-4">
+      <h1>마인드맵으로 한눈에</h1>
+      <p class="sub">노드를 드래그해 옮기거나, 더블클릭해 내용을 고칠 수 있어요.</p>
+
+      <div id="mindmap-wrap">
+        <svg id="mindmap"></svg>
+        <div class="mm-controls">
+          <button id="mm-zoom-in" title="확대">＋</button>
+          <button id="mm-zoom-out" title="축소">－</button>
+          <button id="mm-reset" title="원래대로">⤢</button>
+        </div>
+        <div class="mm-tip">드래그로 이동 · 휠로 확대 · 가지의 ＋로 추가 · 더블클릭으로 수정</div>
+      </div>
+
+      <div class="export-bar">
+        <button id="copy-btn">세특 초안 복사</button>
+        <button id="pdf-btn">PDF로 저장</button>
+        <button class="primary" id="save-btn2">저장함에 보관</button>
+      </div>
+
+      <div class="actions-bar">
+        <button class="ghost" id="back-step3">← 이전</button>
+        <span class="spacer"></span>
+        <button class="ghost" id="restart">처음부터 다시</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 로그인 모달 -->
+  <div id="modal" class="hidden">
+    <div class="modal-card">
+      <button class="close" id="modal-close">✕</button>
+      <form id="login-form" class="auth-form">
+        <h2>로그인</h2>
+        <input name="username" placeholder="아이디" autocomplete="username" />
+        <input name="password" type="password" placeholder="비밀번호" autocomplete="current-password" />
+        <p class="err" id="login-err"></p>
+        <button type="submit">로그인</button>
+        <p class="switch">계정이 없나요? <a href="#" id="to-signup">회원가입</a></p>
+      </form>
+      <form id="signup-form" class="auth-form hidden">
+        <h2>회원가입</h2>
+        <input name="username" placeholder="아이디 (영문·숫자 4~20자)" autocomplete="username" />
+        <input name="password" type="password" placeholder="비밀번호 (8~64자)" autocomplete="new-password" />
+        <input name="nickname" placeholder="닉네임 (1~12자)" />
+        <p class="err" id="signup-err"></p>
+        <button type="submit">가입하고 시작</button>
+        <p class="switch">이미 계정이 있나요? <a href="#" id="to-login">로그인</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- 저장함 모달 -->
+  <div id="saved-modal" class="hidden">
+    <div class="modal-card wide">
+      <button class="close" id="saved-close">✕</button>
+      <h2>📂 내 저장함</h2>
+      <div id="saved-list"></div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='index.js') }}"></script>
+</body>
+</html>

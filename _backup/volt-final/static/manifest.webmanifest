@@ -1,0 +1,14 @@
+{
+  "name": "볼트 커넥션",
+  "short_name": "볼트커넥션",
+  "description": "건전지를 직렬·병렬로 이어 목표 전압을 맞추는 퍼즐 게임",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1e2433",
+  "theme_color": "#1e2433",
+  "icons": [
+    { "src": "/static/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

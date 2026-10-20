@@ -1,0 +1,14 @@
+{
+  "name": "Pathway · 고등학생 학업 내비게이션",
+  "short_name": "Pathway",
+  "description": "진로 목표에서 오늘 할 공부까지 — 내신 역산, 최적 시간 배분, 자동 재조정",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#4f6bed",
+  "icons": [
+    { "src": "/static/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

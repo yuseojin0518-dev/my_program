@@ -1,0 +1,12 @@
+{
+  "name": "메모앱",
+  "short_name": "메모앱",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f2fb",
+  "theme_color": "#5b3cc4",
+  "icons": [
+    { "src": "/static/icon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
